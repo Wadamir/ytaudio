@@ -18,6 +18,10 @@ logging.basicConfig(
 	format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
+# Убираем спам getUpdates из логов telegram
+logging.getLogger("telegram").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 # --------------------------------------------------
 # Environment
 # --------------------------------------------------
@@ -26,9 +30,25 @@ if not BOT_TOKEN:
 	raise RuntimeError("BOT_TOKEN is not set")
 
 APP_ENV = os.getenv("APP_ENV", "prod")
+
 COOKIES_PATH = "/cookies.txt"
 
-logging.info(f"Running in {APP_ENV.upper()} mode")
+if APP_ENV == "dev":
+	logging.info("Running in DEV mode")
+else:
+	logging.info("Running in PROD mode")
+
+# --------------------------------------------------
+# Constants
+# --------------------------------------------------
+MAX_TG_AUDIO_MB = 50
+DEFAULT_BITRATE_KBPS = 192
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+def estimate_mp3_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
+	return duration_sec * bitrate_kbps / 8 / 1024
 
 # --------------------------------------------------
 # Handlers
@@ -43,27 +63,63 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		await update.message.reply_text("❌ Send a valid YouTube link")
 		return
 
+	await update.message.reply_text("⏳ Checking video info...")
+
+	# --- Step 1: extract metadata only ---
+	try:
+		with yt_dlp.YoutubeDL({
+			"quiet": True,
+			"cookies": COOKIES_PATH,
+		}) as ydl:
+			info = ydl.extract_info(url, download=False)
+	except Exception:
+		logging.exception("Failed to extract video metadata")
+		await update.message.reply_text("❌ Failed to read video info")
+		return
+
+	duration = info.get("duration")
+	title = info.get("title", "audio")
+
+	if not duration:
+		await update.message.reply_text("❌ Cannot determine video duration")
+		return
+
+	estimated_size_mb = estimate_mp3_size_mb(
+		duration,
+		DEFAULT_BITRATE_KBPS,
+	)
+
+	logging.info(
+		f"Video: {title} | "
+		f"Duration: {duration}s | "
+		f"Bitrate: {DEFAULT_BITRATE_KBPS} kbps | "
+		f"Estimated size: {estimated_size_mb:.1f} MB"
+	)
+
+	if estimated_size_mb > MAX_TG_AUDIO_MB:
+		await update.message.reply_text(
+			f"❌ Audio is too large (~{estimated_size_mb:.1f} MB).\n"
+			f"Try a shorter video."
+		)
+		return
+
 	await update.message.reply_text("⏳ Downloading audio...")
 
+	# --- Step 2: download & convert ---
 	ydl_opts = {
 		"format": "bestaudio/best",
 		"outtmpl": "/tmp/%(id)s.%(ext)s",
 		"cookies": COOKIES_PATH,
-
-		"js_runtimes": {
-			"node": {
-				"path": "/usr/bin/node"
-			}
-		},
-
 		"postprocessors": [{
 			"key": "FFmpegExtractAudio",
 			"preferredcodec": "mp3",
-			"preferredquality": "128",
+			"preferredquality": str(DEFAULT_BITRATE_KBPS),
 		}],
 		"noplaylist": True,
 		"quiet": True,
 	}
+
+	audio_file = None
 
 	try:
 		with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -76,14 +132,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 		await update.message.reply_audio(
 			audio=open(audio_file, "rb"),
-			title=info.get("title", "audio"),
+			title=title,
 		)
-
-		os.remove(audio_file)
 
 	except Exception:
 		logging.exception("yt-dlp failed")
 		await update.message.reply_text("❌ Failed to download audio")
+
+	finally:
+		if audio_file and os.path.exists(audio_file):
+			os.remove(audio_file)
 
 # --------------------------------------------------
 # App bootstrap
