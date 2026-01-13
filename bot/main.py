@@ -18,7 +18,7 @@ logging.basicConfig(
 	format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-# Убираем спам getUpdates из логов telegram
+# Suppress telegram polling noise
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -43,12 +43,23 @@ else:
 # --------------------------------------------------
 MAX_TG_AUDIO_MB = 50
 DEFAULT_BITRATE_KBPS = 192
+MIN_BITRATE_KBPS = 64
+BITRATE_STEPS = [192, 160, 128, 96, 64]
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
 def estimate_mp3_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
 	return duration_sec * bitrate_kbps / 8 / 1024
+
+
+def choose_bitrate(duration_sec: int) -> tuple[int | None, float]:
+	for bitrate in BITRATE_STEPS:
+		size_mb = estimate_mp3_size_mb(duration_sec, bitrate)
+		if size_mb <= MAX_TG_AUDIO_MB:
+			return bitrate, size_mb
+
+	return None, estimate_mp3_size_mb(duration_sec, MIN_BITRATE_KBPS)
 
 # --------------------------------------------------
 # Handlers
@@ -65,16 +76,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	await update.message.reply_text("⏳ Checking video info...")
 
-	# --- Step 1: extract metadata only ---
+	# --------------------------------------------------
+	# Step 1: extract metadata only
+	# --------------------------------------------------
 	try:
 		with yt_dlp.YoutubeDL({
 			"quiet": True,
 			"cookies": COOKIES_PATH,
-            "js_runtimes": {
-                "node": {
-                    "path": "/usr/bin/node"
-                }
-            },			
+			"js_runtimes": {
+				"node": {
+					"path": "/usr/bin/node"
+				}
+			},
 		}) as ydl:
 			info = ydl.extract_info(url, download=False)
 	except Exception:
@@ -89,41 +102,47 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		await update.message.reply_text("❌ Cannot determine video duration")
 		return
 
-	estimated_size_mb = estimate_mp3_size_mb(
-		duration,
-		DEFAULT_BITRATE_KBPS,
-	)
+	chosen_bitrate, estimated_size_mb = choose_bitrate(duration)
 
 	logging.info(
 		f"Video: {title} | "
 		f"Duration: {duration}s | "
-		f"Bitrate: {DEFAULT_BITRATE_KBPS} kbps | "
+		f"Chosen bitrate: {chosen_bitrate or 'N/A'} kbps | "
 		f"Estimated size: {estimated_size_mb:.1f} MB"
 	)
 
-	if estimated_size_mb > MAX_TG_AUDIO_MB:
+	if not chosen_bitrate:
 		await update.message.reply_text(
-			f"❌ Audio is too large (~{estimated_size_mb:.1f} MB).\n"
+			f"❌ Audio is too large even at {MIN_BITRATE_KBPS} kbps "
+			f"(~{estimated_size_mb:.1f} MB).\n"
 			f"Try a shorter video."
 		)
 		return
 
+	if chosen_bitrate < DEFAULT_BITRATE_KBPS:
+		await update.message.reply_text(
+			f"ℹ️ Audio will be compressed to {chosen_bitrate} kbps "
+			f"to fit Telegram limits."
+		)
+
 	await update.message.reply_text("⏳ Downloading audio...")
 
-	# --- Step 2: download & convert ---
+	# --------------------------------------------------
+	# Step 2: download & convert
+	# --------------------------------------------------
 	ydl_opts = {
 		"format": "bestaudio/best",
 		"outtmpl": "/tmp/%(id)s.%(ext)s",
 		"cookies": COOKIES_PATH,
-        "js_runtimes": {
-            "node": {
-                "path": "/usr/bin/node"
-            }
-        },		
+		"js_runtimes": {
+			"node": {
+				"path": "/usr/bin/node"
+			}
+		},
 		"postprocessors": [{
 			"key": "FFmpegExtractAudio",
 			"preferredcodec": "mp3",
-			"preferredquality": str(DEFAULT_BITRATE_KBPS),
+			"preferredquality": str(chosen_bitrate),
 		}],
 		"noplaylist": True,
 		"quiet": True,
