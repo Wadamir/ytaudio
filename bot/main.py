@@ -1,25 +1,26 @@
 import os
+import time
 import uuid
 import logging
 import yt_dlp
+from pathlib import Path
 
 from telegram import Update
 from telegram.ext import (
-    ApplicationBuilder,
-    MessageHandler,
-    ContextTypes,
-    filters,
+	ApplicationBuilder,
+	MessageHandler,
+	ContextTypes,
+	filters,
 )
 
 # --------------------------------------------------
 # Logging
 # --------------------------------------------------
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+	level=logging.INFO,
+	format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
-# Reduce telegram polling noise
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -28,184 +29,181 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # --------------------------------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set")
+	raise RuntimeError("BOT_TOKEN is not set")
 
 APP_ENV = os.getenv("APP_ENV", "prod")
-COOKIES_PATH = "/cookies.txt"
+BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
 
-if APP_ENV == "dev":
-    logging.info("Running in DEV mode")
-else:
-    logging.info("Running in PROD mode")
+COOKIES_PATH = "/cookies.txt"
+STORAGE_DIR = Path("/storage/audio")
+
+STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+logging.info(f"Running in {APP_ENV.upper()} mode")
 
 # --------------------------------------------------
 # Constants
 # --------------------------------------------------
 MAX_TG_AUDIO_MB = 50
-FILE_TTL_HOURS = 12
-
-BITRATE_CANDIDATES = [192, 128, 96, 64]
-
-STORAGE_DIR = "/storage/audio"
-PUBLIC_BASE_URL = "http://45.9.43.184:8080/audio"
+MIN_BITRATE_KBPS = 64
+DEFAULT_BITRATE_KBPS = 192
+FILE_TTL_SECONDS = 12 * 60 * 60  # 12 hours
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
 def estimate_mp3_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
-    return duration_sec * bitrate_kbps / 8 / 1024
+	return duration_sec * bitrate_kbps / 8 / 1024
+
+
+def cleanup_old_files():
+	now = time.time()
+	for file in STORAGE_DIR.glob("*.mp3"):
+		if now - file.stat().st_mtime > FILE_TTL_SECONDS:
+			try:
+				file.unlink()
+			except Exception:
+				pass
 
 
 def choose_bitrate(duration: int) -> int:
-    for bitrate in BITRATE_CANDIDATES:
-        est = estimate_mp3_size_mb(duration, bitrate)
-        if est <= MAX_TG_AUDIO_MB:
-            return bitrate
-    return BITRATE_CANDIDATES[-1]
-
-
-def get_real_size_mb(path: str) -> float:
-    return os.path.getsize(path) / 1024 / 1024
+	for bitrate in (192, 128, 96, 64):
+		if estimate_mp3_size_mb(duration, bitrate) <= MAX_TG_AUDIO_MB:
+			return bitrate
+	return MIN_BITRATE_KBPS
 
 
 # --------------------------------------------------
-# Handlers
+# Handler
 # --------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message or not update.message.text:
-        return
+	if not update.message or not update.message.text:
+		return
 
-    url = update.message.text.strip()
+	url = update.message.text.strip()
 
-    if "youtube.com" not in url and "youtu.be" not in url:
-        await update.message.reply_text("❌ Please send a valid YouTube link.")
-        return
+	if "youtube.com" not in url and "youtu.be" not in url:
+		await update.message.reply_text("❌ Please send a valid YouTube link.")
+		return
 
-    await update.message.reply_text("⏳ Checking video information...")
+	await update.message.reply_text("⏳ Checking video info...")
 
-    # --- Step 1: metadata only ---
-    try:
-        with yt_dlp.YoutubeDL({
-            "quiet": True,
-            "cookies": COOKIES_PATH,
-            "js_runtimes": {
-                "node": {
-                    "path": "/usr/bin/node"
-                }
-            },
-        }) as ydl:
-            info = ydl.extract_info(url, download=False)
-    except Exception:
-        logging.exception("Failed to extract metadata")
-        await update.message.reply_text("❌ Failed to read video information.")
-        return
+	# --- Metadata only ---
+	try:
+		with yt_dlp.YoutubeDL({
+			"quiet": True,
+			"cookies": COOKIES_PATH,
+			"js_runtimes": {
+				"node": {"path": "/usr/bin/node"}
+			},
+		}) as ydl:
+			info = ydl.extract_info(url, download=False)
+	except Exception:
+		logging.exception("Metadata extraction failed")
+		await update.message.reply_text("❌ Failed to read video info.")
+		return
 
-    duration = info.get("duration")
-    title = info.get("title", "audio")
+	duration = info.get("duration")
+	title = info.get("title", "audio")
 
-    if not duration:
-        await update.message.reply_text("❌ Unable to determine video duration.")
-        return
+	if not duration:
+		await update.message.reply_text("❌ Cannot determine video duration.")
+		return
 
-    bitrate = choose_bitrate(duration)
-    estimated_size = estimate_mp3_size_mb(duration, bitrate)
+	bitrate = choose_bitrate(duration)
+	estimated_mb = estimate_mp3_size_mb(duration, bitrate)
 
-    logging.info(
-        f"Video: {title} | "
-        f"Duration: {duration}s | "
-        f"Chosen bitrate: {bitrate} kbps | "
-        f"Estimated size: {estimated_size:.1f} MB"
-    )
+	logging.info(
+		f"Video: {title} | "
+		f"Duration: {duration}s | "
+		f"Chosen bitrate: {bitrate} kbps | "
+		f"Estimated size: {estimated_mb:.1f} MB"
+	)
 
-    await update.message.reply_text(
-        f"🎵 Audio will be converted to {bitrate} kbps.\n"
-        f"Estimated size: {estimated_size:.1f} MB."
-    )
+	await update.message.reply_text("⏳ Downloading audio...")
 
-    # --- Step 2: download & convert ---
-    file_id = uuid.uuid4().hex
-    tmp_template = f"/tmp/{file_id}.%(ext)s"
+	file_id = uuid.uuid4().hex
+	outtmpl = f"/tmp/{file_id}.%(ext)s"
 
-    ydl_opts = {
-        "format": "bestaudio/best",
-        "outtmpl": tmp_template,
-        "cookies": COOKIES_PATH,
-        "js_runtimes": {
-            "node": {
-                "path": "/usr/bin/node"
-            }
-        },
-        "postprocessors": [{
-            "key": "FFmpegExtractAudio",
-            "preferredcodec": "mp3",
-            "preferredquality": str(bitrate),
-        }],
-        "noplaylist": True,
-        "quiet": True,
-    }
+	ydl_opts = {
+		"format": "bestaudio/best",
+		"outtmpl": outtmpl,
+		"cookies": COOKIES_PATH,
+		"js_runtimes": {
+			"node": {"path": "/usr/bin/node"}
+		},
+		"postprocessors": [{
+			"key": "FFmpegExtractAudio",
+			"preferredcodec": "mp3",
+			"preferredquality": str(bitrate),
+		}],
+		"noplaylist": True,
+		"quiet": True,
+	}
 
-    audio_tmp_path = None
+	tmp_mp3 = None
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
+	try:
+		with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+			info = ydl.extract_info(url, download=True)
 
-        audio_tmp_path = f"/tmp/{info['id']}.mp3"
+		tmp_mp3 = Path(f"/tmp/{file_id}.mp3")
 
-        if not os.path.exists(audio_tmp_path):
-            raise RuntimeError("Audio file was not created")
+		if not tmp_mp3.exists():
+			raise RuntimeError("MP3 file was not created")
 
-        real_size = get_real_size_mb(audio_tmp_path)
+		real_size_mb = tmp_mp3.stat().st_size / 1024 / 1024
+		logging.info(
+			f"Real size: {real_size_mb:.1f} MB | Bitrate: {bitrate} kbps"
+		)
 
-        logging.info(
-            f"Real size: {real_size:.1f} MB | Bitrate: {bitrate} kbps"
-        )
+		# --- Send directly if possible ---
+		if real_size_mb <= MAX_TG_AUDIO_MB:
+			await update.message.reply_audio(
+				audio=open(tmp_mp3, "rb"),
+				title=title,
+			)
+			return
 
-        # --- Telegram upload ---
-        if real_size <= MAX_TG_AUDIO_MB:
-            await update.message.reply_audio(
-                audio=open(audio_tmp_path, "rb"),
-                title=title,
-            )
-            return
+		# --- Fallback: store & link ---
+		cleanup_old_files()
 
-        # --- Fallback: link ---
-        os.makedirs(STORAGE_DIR, exist_ok=True)
-        final_name = f"{file_id}.mp3"
-        final_path = os.path.join(STORAGE_DIR, final_name)
+		final_path = STORAGE_DIR / f"{file_id}.mp3"
+		tmp_mp3.rename(final_path)
 
-        os.rename(audio_tmp_path, final_path)
+		link = f"{BASE_URL}/audio/{final_path.name}"
 
-        link = f"{PUBLIC_BASE_URL}/{final_name}"
+		await update.message.reply_text(
+			"⚠️ The audio file is too large for Telegram.\n\n"
+			"Here is a download link (available for 12 hours):\n"
+			f"{link}"
+		)
 
-        await update.message.reply_text(
-            "⚠️ The audio file is too large for Telegram.\n\n"
-            "Here is a download link (available for 12 hours):\n"
-            f"{link}"
-        )
+	except Exception:
+		logging.exception("Download error")
+		await update.message.reply_text("❌ Failed to process this video.")
 
-    except Exception:
-        logging.exception("Download error")
-        await update.message.reply_text("❌ Failed to process this video.")
-
-    finally:
-        if audio_tmp_path and os.path.exists(audio_tmp_path):
-            os.remove(audio_tmp_path)
+	finally:
+		if tmp_mp3 and tmp_mp3.exists():
+			try:
+				tmp_mp3.unlink()
+			except Exception:
+				pass
 
 
 # --------------------------------------------------
 # App bootstrap
 # --------------------------------------------------
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
+	app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
+	app.add_handler(
+		MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+	)
 
-    logging.info("Bot started")
-    app.run_polling()
+	logging.info("Bot started")
+	app.run_polling()
 
 
 if __name__ == "__main__":
-    main()
+	main()
