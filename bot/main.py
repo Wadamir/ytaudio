@@ -1,30 +1,25 @@
 import os
-import math
+import uuid
 import logging
-import subprocess
 import yt_dlp
 
-from telegram import (
-	Update,
-	InlineKeyboardButton,
-	InlineKeyboardMarkup,
-)
+from telegram import Update
 from telegram.ext import (
-	ApplicationBuilder,
-	MessageHandler,
-	CallbackQueryHandler,
-	ContextTypes,
-	filters,
+    ApplicationBuilder,
+    MessageHandler,
+    ContextTypes,
+    filters,
 )
 
 # --------------------------------------------------
 # Logging
 # --------------------------------------------------
 logging.basicConfig(
-	level=logging.INFO,
-	format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
+# Reduce telegram polling noise
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
@@ -33,242 +28,184 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 # --------------------------------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-	raise RuntimeError("BOT_TOKEN is not set")
+    raise RuntimeError("BOT_TOKEN is not set")
 
 APP_ENV = os.getenv("APP_ENV", "prod")
 COOKIES_PATH = "/cookies.txt"
 
-logging.info("Running in %s mode", APP_ENV.upper())
+if APP_ENV == "dev":
+    logging.info("Running in DEV mode")
+else:
+    logging.info("Running in PROD mode")
 
 # --------------------------------------------------
 # Constants
 # --------------------------------------------------
 MAX_TG_AUDIO_MB = 50
-SAFE_FACTOR = 1.5
-MAX_SPLIT_PARTS = 3
+FILE_TTL_HOURS = 12
 
-BITRATE_STEPS = [192, 160, 128, 96, 64]
+BITRATE_CANDIDATES = [192, 128, 96, 64]
 
-# --------------------------------------------------
-# In-memory pending splits (simple & safe)
-# --------------------------------------------------
-PENDING_SPLITS = {}
+STORAGE_DIR = "/storage/audio"
+PUBLIC_BASE_URL = "http://45.9.43.184:8080/audio"
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
 def estimate_mp3_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
-	return duration_sec * bitrate_kbps / 8 / 1024
+    return duration_sec * bitrate_kbps / 8 / 1024
 
 
-def real_size_mb(path: str) -> float:
-	return os.path.getsize(path) / 1024 / 1024
+def choose_bitrate(duration: int) -> int:
+    for bitrate in BITRATE_CANDIDATES:
+        est = estimate_mp3_size_mb(duration, bitrate)
+        if est <= MAX_TG_AUDIO_MB:
+            return bitrate
+    return BITRATE_CANDIDATES[-1]
 
 
-def yt_common_opts():
-	return {
-		"cookies": COOKIES_PATH,
-		"quiet": True,
-		"js_runtimes": {
-			"node": {
-				"path": "/usr/bin/node"
-			}
-		},
-	}
-
-
-def split_mp3(input_path: str, parts: int, duration: int) -> list[str]:
-	part_duration = math.ceil(duration / parts)
-	output_files = []
-
-	for i in range(parts):
-		out = f"{input_path}.part{i+1}.mp3"
-		cmd = [
-			"ffmpeg",
-			"-y",
-			"-i", input_path,
-			"-ss", str(i * part_duration),
-			"-t", str(part_duration),
-			"-c", "copy",
-			out
-		]
-		subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-		output_files.append(out)
-
-	return output_files
+def get_real_size_mb(path: str) -> float:
+    return os.path.getsize(path) / 1024 / 1024
 
 
 # --------------------------------------------------
 # Handlers
 # --------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if not update.message or not update.message.text:
-		return
+    if not update.message or not update.message.text:
+        return
 
-	url = update.message.text.strip()
+    url = update.message.text.strip()
 
-	if "youtube.com" not in url and "youtu.be" not in url:
-		await update.message.reply_text("❌ Send a valid YouTube link")
-		return
+    if "youtube.com" not in url and "youtu.be" not in url:
+        await update.message.reply_text("❌ Please send a valid YouTube link.")
+        return
 
-	await update.message.reply_text("⏳ Checking video info...")
+    await update.message.reply_text("⏳ Checking video information...")
 
-	# --- metadata ---
-	try:
-		with yt_dlp.YoutubeDL(yt_common_opts()) as ydl:
-			info = ydl.extract_info(url, download=False)
-	except Exception:
-		logging.exception("Metadata error")
-		await update.message.reply_text("❌ Failed to read video info")
-		return
+    # --- Step 1: metadata only ---
+    try:
+        with yt_dlp.YoutubeDL({
+            "quiet": True,
+            "cookies": COOKIES_PATH,
+            "js_runtimes": {
+                "node": {
+                    "path": "/usr/bin/node"
+                }
+            },
+        }) as ydl:
+            info = ydl.extract_info(url, download=False)
+    except Exception:
+        logging.exception("Failed to extract metadata")
+        await update.message.reply_text("❌ Failed to read video information.")
+        return
 
-	duration = info.get("duration")
-	title = info.get("title", "audio")
+    duration = info.get("duration")
+    title = info.get("title", "audio")
 
-	if not duration:
-		await update.message.reply_text("❌ Cannot determine duration")
-		return
+    if not duration:
+        await update.message.reply_text("❌ Unable to determine video duration.")
+        return
 
-	# --- bitrate selection ---
-	chosen_bitrate = None
-	estimated_size = None
+    bitrate = choose_bitrate(duration)
+    estimated_size = estimate_mp3_size_mb(duration, bitrate)
 
-	for br in BITRATE_STEPS:
-		est = estimate_mp3_size_mb(duration, br)
-		if est > MAX_TG_AUDIO_MB * SAFE_FACTOR:
-			continue
-		chosen_bitrate = br
-		estimated_size = est
-		break
+    logging.info(
+        f"Video: {title} | "
+        f"Duration: {duration}s | "
+        f"Chosen bitrate: {bitrate} kbps | "
+        f"Estimated size: {estimated_size:.1f} MB"
+    )
 
-	if not chosen_bitrate:
-		await update.message.reply_text("❌ Video is too long")
-		return
+    await update.message.reply_text(
+        f"🎵 Audio will be converted to {bitrate} kbps.\n"
+        f"Estimated size: {estimated_size:.1f} MB."
+    )
 
-	logging.info(
-		"Video: %s | Duration: %ss | Bitrate: %s kbps | Est: %.1f MB",
-		title, duration, chosen_bitrate, estimated_size
-	)
+    # --- Step 2: download & convert ---
+    file_id = uuid.uuid4().hex
+    tmp_template = f"/tmp/{file_id}.%(ext)s"
 
-	await update.message.reply_text("⏳ Downloading audio...")
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "outtmpl": tmp_template,
+        "cookies": COOKIES_PATH,
+        "js_runtimes": {
+            "node": {
+                "path": "/usr/bin/node"
+            }
+        },
+        "postprocessors": [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": str(bitrate),
+        }],
+        "noplaylist": True,
+        "quiet": True,
+    }
 
-	# --- download ---
-	audio_file = None
-	try:
-		ydl_opts = {
-			**yt_common_opts(),
-			"format": "bestaudio/best",
-			"outtmpl": "/tmp/%(id)s.%(ext)s",
-			"noplaylist": True,
-			"postprocessors": [{
-				"key": "FFmpegExtractAudio",
-				"preferredcodec": "mp3",
-				"preferredquality": str(chosen_bitrate),
-			}],
-		}
+    audio_tmp_path = None
 
-		with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-			info = ydl.extract_info(url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
 
-		audio_file = f"/tmp/{info['id']}.mp3"
-		size_mb = real_size_mb(audio_file)
+        audio_tmp_path = f"/tmp/{info['id']}.mp3"
 
-		logging.info(
-			"Real size: %.1f MB | Bitrate: %s kbps",
-			size_mb, chosen_bitrate
-		)
+        if not os.path.exists(audio_tmp_path):
+            raise RuntimeError("Audio file was not created")
 
-		# --- fits ---
-		if size_mb <= MAX_TG_AUDIO_MB:
-			await update.message.reply_audio(
-				audio=open(audio_file, "rb"),
-				title=title,
-			)
-			return
+        real_size = get_real_size_mb(audio_tmp_path)
 
-		# --- split decision ---
-		parts = math.ceil(size_mb / MAX_TG_AUDIO_MB)
+        logging.info(
+            f"Real size: {real_size:.1f} MB | Bitrate: {bitrate} kbps"
+        )
 
-		if parts > MAX_SPLIT_PARTS:
-			await update.message.reply_text(
-				"❌ Audio is too large even when split.\n"
-				"I can only split into max 3 parts."
-			)
-			return
+        # --- Telegram upload ---
+        if real_size <= MAX_TG_AUDIO_MB:
+            await update.message.reply_audio(
+                audio=open(audio_tmp_path, "rb"),
+                title=title,
+            )
+            return
 
-		PENDING_SPLITS[update.effective_user.id] = {
-			"file": audio_file,
-			"title": title,
-			"duration": duration,
-			"parts": parts,
-		}
+        # --- Fallback: link ---
+        os.makedirs(STORAGE_DIR, exist_ok=True)
+        final_name = f"{file_id}.mp3"
+        final_path = os.path.join(STORAGE_DIR, final_name)
 
-		keyboard = InlineKeyboardMarkup([
-			[
-				InlineKeyboardButton("✂️ Split", callback_data="split_yes"),
-				InlineKeyboardButton("❌ Cancel", callback_data="split_no"),
-			]
-		])
+        os.rename(audio_tmp_path, final_path)
 
-		await update.message.reply_text(
-			f"⚠️ Audio is too large ({size_mb:.1f} MB).\n\n"
-			f"It will be split into {parts} parts.\n"
-			f"Quality: {chosen_bitrate} kbps.\n\n"
-			f"Proceed?",
-			reply_markup=keyboard,
-		)
+        link = f"{PUBLIC_BASE_URL}/{final_name}"
 
-	except Exception:
-		logging.exception("Download error")
-		await update.message.reply_text("❌ Failed to process audio")
+        await update.message.reply_text(
+            "⚠️ The audio file is too large for Telegram.\n\n"
+            "Here is a download link (available for 12 hours):\n"
+            f"{link}"
+        )
 
-# --------------------------------------------------
-# Split confirmation
-# --------------------------------------------------
-async def handle_split_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	query = update.callback_query
-	await query.answer()
+    except Exception:
+        logging.exception("Download error")
+        await update.message.reply_text("❌ Failed to process this video.")
 
-	user_id = query.from_user.id
-	data = PENDING_SPLITS.pop(user_id, None)
+    finally:
+        if audio_tmp_path and os.path.exists(audio_tmp_path):
+            os.remove(audio_tmp_path)
 
-	if not data:
-		await query.edit_message_text("❌ Nothing to split")
-		return
-
-	if query.data == "split_no":
-		os.remove(data["file"])
-		await query.edit_message_text("❌ Cancelled")
-		return
-
-	parts = split_mp3(
-		data["file"],
-		data["parts"],
-		data["duration"]
-	)
-
-	for idx, part in enumerate(parts, 1):
-		await query.message.reply_audio(
-			audio=open(part, "rb"),
-			title=f"{data['title']} (Part {idx}/{len(parts)})",
-		)
-		os.remove(part)
-
-	os.remove(data["file"])
-	await query.edit_message_text("✅ Done")
 
 # --------------------------------------------------
-# Bootstrap
+# App bootstrap
 # --------------------------------------------------
 def main():
-	app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-	app.add_handler(CallbackQueryHandler(handle_split_callback))
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
-	logging.info("Bot started")
-	app.run_polling()
+    logging.info("Bot started")
+    app.run_polling()
 
 
 if __name__ == "__main__":
-	main()
+    main()
