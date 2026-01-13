@@ -70,6 +70,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		with yt_dlp.YoutubeDL({
 			"quiet": True,
 			"cookies": COOKIES_PATH,
+            "js_runtimes": {
+                "node": {
+                    "path": "/usr/bin/node"
+                }
+            },			
 		}) as ydl:
 			info = ydl.extract_info(url, download=False)
 	except Exception:
@@ -110,6 +115,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		"format": "bestaudio/best",
 		"outtmpl": "/tmp/%(id)s.%(ext)s",
 		"cookies": COOKIES_PATH,
+        "js_runtimes": {
+            "node": {
+                "path": "/usr/bin/node"
+            }
+        },		
 		"postprocessors": [{
 			"key": "FFmpegExtractAudio",
 			"preferredcodec": "mp3",
