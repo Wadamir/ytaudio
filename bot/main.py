@@ -59,7 +59,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		"postprocessors": [{
 			"key": "FFmpegExtractAudio",
 			"preferredcodec": "mp3",
-			"preferredquality": "192",
+			"preferredquality": "128",
 		}],
 		"noplaylist": True,
 		"quiet": True,
