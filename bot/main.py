@@ -67,37 +67,39 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 # --------------------------------------------------
 # Constants
 # --------------------------------------------------
-MAX_TG_AUDIO_MB = 50
-MAX_STORAGE_HOURS = 12
-
+AUDIO_CODEC = "aac"         	# aac | mp3 | opus
+AUDIO_CONTAINER = "m4a" 		# m4a | mp3 | ogg
 # BITRATE_LEVELS = [192, 160, 128, 96, 64]
-BITRATE_LEVELS = [64]
-LONG_VIDEO_SECONDS = 5400  # 1.5 hours
+AUDIO_BITRATE_KBPS = 64	  		# 64 | 96 | 128 | 160 | 192
+
+MAX_TG_AUDIO_EFFECTIVE_MB = 50 			# Telegram upload limit
+MAX_TG_AUDIO_MARGIN_MB = 5 		# Safety margin
+MAX_TG_AUDIO_EFFECTIVE_MB = MAX_TG_AUDIO_EFFECTIVE_MB - MAX_TG_AUDIO_MARGIN_MB
+
+MAX_STORAGE_HOURS = 12 			# How long to keep files on disk
+
+LONG_VIDEO_SECONDS = 7200 		# 2 hours
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
-def estimate_mp3_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
+def estimate_audio_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
+	"""
+	Estimate audio file size in MB based on duration and bitrate.
+	Works for mp3, m4a (AAC), opus, etc.
+	"""
 	return duration_sec * bitrate_kbps / 8 / 1024
 
 
 def cleanup_old_files():
 	now = time.time()
 
-	for f in STORAGE_DIR.glob("*.mp3"):
+	for f in STORAGE_DIR.glob(f"*.{AUDIO_CONTAINER}"):
 		if now - f.stat().st_mtime > MAX_STORAGE_HOURS * 3600:
 			try:
 				f.unlink()
 			except Exception:
 				logging.exception("Failed to remove old file")
-
-
-def choose_bitrate(duration: int) -> int:
-	for br in BITRATE_LEVELS:
-		size = estimate_mp3_size_mb(duration, br)
-		if size <= MAX_TG_AUDIO_MB:
-			return br
-	return 64
 
 
 def safe_filename(text: str, max_len: int = 150) -> str:
@@ -137,7 +139,7 @@ def format_date(yyyymmdd: Optional[str]) -> str:
 def build_audio_filename(info: dict) -> str:
 	"""
 	Build human-readable audio filename:
-	Channel – Title (HH:MM, YYYY-MM-DD).mp3
+	Channel – Title (HH:MM, YYYY-MM-DD).m4a
 	"""
 	channel = (
 		info.get("channel")
@@ -154,7 +156,7 @@ def build_audio_filename(info: dict) -> str:
 
 	filename = (
 		f"{channel} – {title} "
-		f"({duration_str}, {date_str}).mp3"
+		f"({duration_str}, {date_str}).{AUDIO_CONTAINER}"
 	)
 
 	return safe_filename(filename)
@@ -219,7 +221,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			video_id=info.get("id") if info else None,
 			video_title=title if "title" in locals() else None,
 			duration_seconds=duration if "duration" in locals() else None,
-			chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
+			chosen_bitrate=AUDIO_BITRATE_KBPS,
 			estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
 			real_size_mb=None,
 			delivery_method="failed",
@@ -236,28 +238,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		await update.message.reply_text("❌ Cannot determine video duration.")
 		return
 
-	chosen_bitrate = choose_bitrate(duration)
-	estimated_size = estimate_mp3_size_mb(duration, chosen_bitrate)
+	estimated_size = estimate_audio_size_mb(duration, AUDIO_BITRATE_KBPS)
 	estimated_size_mb = round(estimated_size, 2)
 
 	logging.info(
 		f"Video: {title} | "
 		f"Duration: {duration}s | "
-		f"Chosen bitrate: {chosen_bitrate} kbps | "
-		f"Estimated size: {estimated_size:.1f} MB"
+		f"Estimated size: {estimated_size_mb:.1f} MB"
 	)
 
 	# --- Very long video ---
 	if duration >= LONG_VIDEO_SECONDS:
 		await update.message.reply_text(
-			"⚠️ This video is longer than 1.5 hours. I can create a download link instead (64 kbps).\n\n"
+			"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
 			"Please wait, processing may take some time."
 		)
 
 	# --- Telegram upload possible ---
-	if estimated_size <= MAX_TG_AUDIO_MB:
+	if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
 		await update.message.reply_text(
-			f"⏳ Downloading audio: {chosen_bitrate} kbps (~{estimated_size:.1f} MB)"
+			f"⏳ Downloading audio: ~{estimated_size_mb:.1f} MB"
 		)
 
 		tmp_id = uuid.uuid4().hex
@@ -269,8 +269,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
-					"preferredcodec": "aac",   # важно: m4a / AAC
-					"preferredquality": "64",
+					"preferredcodec": AUDIO_CODEC,
+					"preferredquality": str(AUDIO_BITRATE_KBPS),
 				},
 				{
 					"key": "EmbedThumbnail",
@@ -291,7 +291,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			with yt_dlp.YoutubeDL(opts) as ydl:
 				ydl.extract_info(url, download=True)
 
-			# 🔑 ИЩЕМ ФАКТИЧЕСКИЙ ФАЙЛ
+			# 🔑 Search for file
 			tmp_dir = Path("/tmp")
 			files = list(tmp_dir.glob(f"{tmp_id}.*"))
 
@@ -308,7 +308,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				title=title,
 				performer=info.get("uploader"),
 				duration=duration,
-				filename=build_audio_filename(info).replace(".mp3", ".m4a"),
+				filename=build_audio_filename(info),
 			)
 
 			increment_downloads(user.id)
@@ -318,7 +318,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				video_id=info.get("id"),
 				video_title=title,
 				duration_seconds=duration,
-				chosen_bitrate=chosen_bitrate,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb,
 				real_size_mb=real_size_mb,
 				delivery_method="telegram",
@@ -335,7 +335,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				video_id=info.get("id") if info else None,
 				video_title=title if "title" in locals() else None,
 				duration_seconds=duration if "duration" in locals() else None,
-				chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 				real_size_mb=None,
 				delivery_method="failed",
@@ -353,12 +353,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# --- Fallback: download link (always 64 kbps) ---
 	if duration < LONG_VIDEO_SECONDS:
 		await update.message.reply_text(
-			"⚠️ This video is too large for Telegram upload. I can create a download link instead (64 kbps).\n\n"
+			"⚠️ This video is too large for Telegram upload. I can create a download link instead.\n\n"
 			"Please wait, processing may take some time."
 		)
 
 	file_id = uuid.uuid4().hex
-	final_path = STORAGE_DIR / f"{file_id}.mp3"
+	final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
 
 	opts = ydl_base_opts()
 	opts.update({
@@ -367,8 +367,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		"postprocessors": [
 			{
 				"key": "FFmpegExtractAudio",
-				"preferredcodec": "aac",
-				"preferredquality": "64",
+				"preferredcodec": AUDIO_CODEC,
+				"preferredquality": str(AUDIO_BITRATE_KBPS),
 			},
 			{
 				"key": "EmbedThumbnail",
@@ -390,15 +390,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		with yt_dlp.YoutubeDL(opts) as ydl:
 			ydl.extract_info(url, download=True)
 
-		tmp_m4a = Path(f"/tmp/{file_id}.m4a")
-		tmp_mp3 = Path(f"/tmp/{file_id}.mp3")
-		shutil.move(str(tmp_m4a), str(tmp_mp3))
-		shutil.move(str(tmp_mp3), str(final_path))
+
+		tmp_dir = Path("/tmp")
+		files = list(tmp_dir.glob(f"{file_id}.*"))
+
+		if not files:
+			raise RuntimeError("Downloaded audio file not found")
+
+		tmp_path = files[0]
+		shutil.move(str(tmp_path), str(final_path))
 
 		size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
 		logging.info(
 			f"File saved: {final_path.name} | "
-			f"Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
+			f"Real size: {size_mb:.1f} MB"
 		)
 
 		link = f"{BASE_URL}/audio/{final_path.name}"
@@ -419,7 +424,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			video_id=info.get("id"),
 			video_title=title,
 			duration_seconds=duration,
-			chosen_bitrate=64,
+			chosen_bitrate=AUDIO_BITRATE_KBPS,
 			estimated_size_mb=estimated_size_mb,
 			real_size_mb=size_mb,
 			delivery_method="link",
@@ -439,7 +444,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			video_id=info.get("id") if info else None,
 			video_title=title if "title" in locals() else None,
 			duration_seconds=duration if "duration" in locals() else None,
-			chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
+			chosen_bitrate=AUDIO_BITRATE_KBPS,
 			estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 			real_size_mb=None,
 			delivery_method="failed",
