@@ -260,7 +260,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 		tmp_id = uuid.uuid4().hex
-		tmp_path = Path(f"/tmp/{tmp_id}.ogg")
+		# tmp_path = Path(f"/tmp/{tmp_id}.ogg")
 
 		opts = ydl_base_opts()
 		opts.update({
@@ -288,13 +288,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			],
 		})
 
+		tmp_path = None
+
 		try:
 			with yt_dlp.YoutubeDL(opts) as ydl:
-				ydl.extract_info(url, download=True)
+				info_dl = ydl.extract_info(url, download=True)
 
-			real_size = tmp_path.stat().st_size / 1024 / 1024
-			real_size_mb = round(real_size, 2)
-			logging.info(f"Real size: {real_size:.1f} MB | Bitrate: {chosen_bitrate} kbps")
+			tmp_path = Path(
+				info_dl.get("_filename")
+				or info_dl.get("requested_downloads")[0].get("filepath")
+			)
+
+			real_size_mb = round((tmp_path.stat().st_size / 1024 / 1024), 2)
+			logging.info(f"Real size: {real_size_mb} MB | Bitrate: {chosen_bitrate} kbps")
 
 			await update.message.reply_voice(
 				voice=open(tmp_path, "rb"),
@@ -335,8 +341,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			)
 
 		finally:
-			if tmp_path.exists():
-				tmp_path.unlink()
+			if tmp_path and tmp_path.exists():
+				try:
+					tmp_path.unlink()
+				except Exception:
+					logging.exception("Failed to remove temp file")
 
 		return
 
@@ -375,8 +384,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 		size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
 		logging.info(
-			f"File saved: {final_path.name} | "
-			f"Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
+			f"File saved: {final_path.name} | Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
 		)
 
 		link = f"{BASE_URL}/audio/{final_path.name}"
