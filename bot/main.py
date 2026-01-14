@@ -261,7 +261,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 		tmp_id = uuid.uuid4().hex
-		tmp_path = Path(f"/tmp/{tmp_id}.mp3")
+		tmp_m4a = Path(f"/tmp/{tmp_id}.m4a")
+		tmp_mp3 = Path(f"/tmp/{tmp_id}.mp3")
+		
+		# tmp_m4a.rename(tmp_mp3)
+		# tmp_path = tmp_mp3
 
 		opts = ydl_base_opts()
 		opts.update({
@@ -270,14 +274,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
-					"preferredcodec": "mp3",
-					"preferredquality": str(chosen_bitrate),
+					"preferredcodec": "aac",
+					"preferredquality": "64",
+				},
+				{
+					"key": "EmbedThumbnail",
+				},
+				{
+					"key": "FFmpegMetadata",
 				},
 			],
 			"postprocessor_args": [
-				"-ac", "1",          # mono
-				"-ar", "24000",      # speech-friendly sample rate
-				"-map_metadata", "-1",  # remove metadata
+				"-metadata", f"title={title}",
+				"-metadata", f"artist={info.get('uploader', '')}",
+				"-metadata", "album=YouTube",
+				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
+				"-metadata", "encoded_by=YouTube Audio Downloader",
 			],
 		})
 
@@ -285,14 +297,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			with yt_dlp.YoutubeDL(opts) as ydl:
 				ydl.extract_info(url, download=True)
 
+			if not tmp_m4a.exists():
+				raise RuntimeError("Downloaded file not found")
+			
+			# Convert to mp3 path
+			shutil.move(str(tmp_m4a), str(tmp_mp3))
+			tmp_path = tmp_mp3
+
 			real_size = tmp_path.stat().st_size / 1024 / 1024
 			real_size_mb = round(real_size, 2)
 			logging.info(f"Real size: {real_size:.1f} MB | Bitrate: {chosen_bitrate} kbps")
 
-			await update.message.reply_voice(
-				voice=open(tmp_path, "rb"),
-				# title=title,
-				filename=build_audio_filename(info),
+			await update.message.reply_audio(
+				audio=open(tmp_path, "rb"),
+				title=title,
+				filename=build_audio_filename(info).replace(".mp3", ".m4a"),
 			)
 			
 			increment_downloads(user.id)
@@ -328,8 +347,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			)
 
 		finally:
-			if tmp_path.exists():
-				tmp_path.unlink()
+			if tmp_m4a.exists():
+				tmp_m4a.unlink()
+			if tmp_mp3.exists():
+				tmp_mp3.unlink()
+
 
 		return
 
@@ -350,12 +372,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		"postprocessors": [
 			{
 				"key": "FFmpegExtractAudio",
-				"preferredcodec": "mp3",
+				"preferredcodec": "aac",
 				"preferredquality": "64",
+			},
+			{
+				"key": "EmbedThumbnail",
 			},
 			{
 				"key": "FFmpegMetadata",
 			},
+		],
+		"postprocessor_args": [
+			"-metadata", f"title={title}",
+			"-metadata", f"artist={info.get('uploader', '')}",
+			"-metadata", "album=YouTube",
+			"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
+			"-metadata", "encoded_by=YouTube Audio Downloader",
 		],
 	})
 
@@ -363,7 +395,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		with yt_dlp.YoutubeDL(opts) as ydl:
 			ydl.extract_info(url, download=True)
 
+		tmp_m4a = Path(f"/tmp/{file_id}.m4a")
 		tmp_mp3 = Path(f"/tmp/{file_id}.mp3")
+		shutil.move(str(tmp_m4a), str(tmp_mp3))
 		shutil.move(str(tmp_mp3), str(final_path))
 
 		size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
