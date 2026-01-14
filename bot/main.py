@@ -261,11 +261,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 		tmp_id = uuid.uuid4().hex
-		tmp_m4a = Path(f"/tmp/{tmp_id}.m4a")
-		tmp_mp3 = Path(f"/tmp/{tmp_id}.mp3")
-		
-		# tmp_m4a.rename(tmp_mp3)
-		# tmp_path = tmp_mp3
 
 		opts = ydl_base_opts()
 		opts.update({
@@ -274,12 +269,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
-					"preferredcodec": "aac",
+					"preferredcodec": "aac",   # важно: m4a / AAC
 					"preferredquality": "64",
 				},
 				{
 					"key": "EmbedThumbnail",
 				},
+				{
+					"key": "FFmpegMetadata",
+				},
+			],
+			"postprocessor_args": [
+				"-metadata", f"title={title}",
+				"-metadata", f"artist={info.get('uploader', '')}",
+				"-metadata", "album=YouTube",
+				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
 			],
 		})
 
@@ -287,25 +291,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			with yt_dlp.YoutubeDL(opts) as ydl:
 				ydl.extract_info(url, download=True)
 
-			if not tmp_m4a.exists():
-				raise RuntimeError("Downloaded file not found")
-			
-			# Convert to mp3 path
-			shutil.move(str(tmp_m4a), str(tmp_mp3))
-			tmp_path = tmp_mp3
+			# 🔑 ИЩЕМ ФАКТИЧЕСКИЙ ФАЙЛ
+			tmp_dir = Path("/tmp")
+			files = list(tmp_dir.glob(f"{tmp_id}.*"))
 
-			real_size = tmp_path.stat().st_size / 1024 / 1024
-			real_size_mb = round(real_size, 2)
-			logging.info(f"Real size: {real_size:.1f} MB | Bitrate: {chosen_bitrate} kbps")
+			if not files:
+				raise RuntimeError("Downloaded audio file not found")
+
+			tmp_path = files[0]
+
+			real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
+			logging.info(f"Real size: {real_size_mb:.2f} MB")
 
 			await update.message.reply_audio(
-				audio=open(tmp_m4a, "rb"),
+				audio=open(tmp_path, "rb"),
 				title=title,
 				performer=info.get("uploader"),
 				duration=duration,
 				filename=build_audio_filename(info).replace(".mp3", ".m4a"),
 			)
-			
+
 			increment_downloads(user.id)
 			log_download(
 				user_id=user.id,
@@ -331,7 +336,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				video_title=title if "title" in locals() else None,
 				duration_seconds=duration if "duration" in locals() else None,
 				chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
-				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 				real_size_mb=None,
 				delivery_method="failed",
 				status="failed",
@@ -339,13 +344,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			)
 
 		finally:
-			if tmp_m4a.exists():
-				tmp_m4a.unlink()
-			if tmp_mp3.exists():
-				tmp_mp3.unlink()
-
+			if "tmp_path" in locals() and tmp_path.exists():
+				tmp_path.unlink()
 
 		return
+
 
 	# --- Fallback: download link (always 64 kbps) ---
 	if duration < LONG_VIDEO_SECONDS:
