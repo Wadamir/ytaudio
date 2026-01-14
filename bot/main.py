@@ -17,7 +17,13 @@ from telegram.ext import ( # type: ignore
 	filters,
 )
 
-from db import init_db, register_user, get_total_users
+from db import (
+	init_db,
+	register_user,
+	increment_downloads,
+	log_download,
+	get_total_users,
+)
 
 # --------------------------------------------------
 # Logging
@@ -118,7 +124,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		return
 
 	user = update.effective_user
-	register_user(user.id)
+	register_user(user)
 
 	cleanup_old_files()
 
@@ -138,9 +144,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		with yt_dlp.YoutubeDL(opts) as ydl:
 			info = ydl.extract_info(url, download=False)
 
-	except Exception:
+	except Exception as e:
 		logging.exception("Metadata extraction failed")
 		await update.message.reply_text("❌ Failed to read video info.")
+
+		log_download(
+			user_id=user.id,
+			video_url=url,
+			video_id=info.get("id") if info else None,
+			video_title=title if "title" in locals() else None,
+			duration_seconds=duration if "duration" in locals() else None,
+			chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
+			estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+			real_size_mb=None,
+			delivery_method="failed",
+			status="failed",
+			error_message=str(e),
+		)
+
 		return
 
 	duration = info.get("duration")
@@ -170,8 +191,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# --- Telegram upload possible ---
 	if estimated_size <= MAX_TG_AUDIO_MB:
 		await update.message.reply_text(
-            f"⏳ Downloading audio: {chosen_bitrate} kbps (~{estimated_size:.1f} MB)"
-        )
+			f"⏳ Downloading audio: {chosen_bitrate} kbps (~{estimated_size:.1f} MB)"
+		)
 
 		tmp_id = uuid.uuid4().hex
 		tmp_path = Path(f"/tmp/{tmp_id}.mp3")
@@ -198,10 +219,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				audio=open(tmp_path, "rb"),
 				title=title,
 			)
+			
+			increment_downloads(user.id)
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id"),
+				video_title=title,
+				duration_seconds=duration,
+				chosen_bitrate=chosen_bitrate,
+				estimated_size_mb=estimated_size,
+				real_size_mb=real_size,
+				delivery_method="telegram",
+				status="success",
+			)
 
-		except Exception:
+		except Exception as e:
 			logging.exception("Telegram upload failed")
 			await update.message.reply_text("❌ Failed to send audio.")
+
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id") if info else None,
+				video_title=title if "title" in locals() else None,
+				duration_seconds=duration if "duration" in locals() else None,
+				chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
+				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+				real_size_mb=None,
+				delivery_method="failed",
+				status="failed",
+				error_message=str(e),
+			)
 
 		finally:
 			if tmp_path.exists():
@@ -251,9 +300,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			"⏰ The file will be available for 12 hours."
 		)
 
-	except Exception:
+		increment_downloads(user.id)
+		log_download(
+			user_id=user.id,
+			video_url=url,
+			video_id=info.get("id"),
+			video_title=title,
+			duration_seconds=duration,
+			chosen_bitrate=64,
+			estimated_size_mb=estimated_size,
+			real_size_mb=size_mb,
+			delivery_method="link",
+			status="success",
+			file_path=str(final_path),
+			download_url=link,
+			fallback_reason="too_large",
+		)
+
+	except Exception as e:
 		logging.exception("Download link generation failed")
 		await update.message.reply_text("❌ Failed to create download link.")
+
+		log_download(
+			user_id=user.id,
+			video_url=url,
+			video_id=info.get("id") if info else None,
+			video_title=title if "title" in locals() else None,
+			duration_seconds=duration if "duration" in locals() else None,
+			chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
+			estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+			real_size_mb=None,
+			delivery_method="failed",
+			status="failed",
+			error_message=str(e),
+		)
 
 
 # --------------------------------------------------
