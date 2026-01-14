@@ -6,6 +6,8 @@
         "outtmpl",
         "postprocessors",
         "preferredcodec",
-        "preferredquality"
+        "preferredquality",
+        "youtu",
+        "ytaudio"
     ]
 }

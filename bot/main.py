@@ -3,8 +3,10 @@ import uuid
 import logging
 import time
 import shutil
+import re
 from pathlib import Path
 from datetime import datetime, timedelta
+from typing import Optional
 
 import yt_dlp # type: ignore
 
@@ -95,6 +97,67 @@ def choose_bitrate(duration: int) -> int:
 		if size <= MAX_TG_AUDIO_MB:
 			return br
 	return 64
+
+
+def safe_filename(text: str, max_len: int = 150) -> str:
+	"""
+	Remove forbidden characters and limit filename length.
+	"""
+	text = re.sub(r'[\\/*?:"<>|]', "", text)
+	text = re.sub(r"\s+", " ", text).strip()
+	return text[:max_len]
+
+
+def format_duration(seconds: int) -> str:
+	"""
+	Format duration in HH:MM or MM min.
+	"""
+	if seconds <= 0:
+		return "unknown"
+
+	h = seconds // 3600
+	m = (seconds % 3600) // 60
+
+	if h > 0:
+		return f"{h:02d}:{m:02d}"
+	return f"{m:02d} min"
+
+
+def format_date(yyyymmdd: Optional[str]) -> str:
+	"""
+	Convert YYYYMMDD -> YYYY-MM-DD
+	"""
+	if not yyyymmdd or len(yyyymmdd) != 8:
+		return "unknown-date"
+
+	return f"{yyyymmdd[:4]}-{yyyymmdd[4:6]}-{yyyymmdd[6:]}"
+
+
+def build_audio_filename(info: dict) -> str:
+	"""
+	Build human-readable audio filename:
+	Channel – Title (HH:MM, YYYY-MM-DD).mp3
+	"""
+	channel = (
+		info.get("channel")
+		or info.get("uploader")
+		or "YouTube"
+	)
+
+	title = info.get("title", "audio")
+	duration = info.get("duration", 0)
+	upload_date = info.get("upload_date")
+
+	duration_str = format_duration(duration)
+	date_str = format_date(upload_date)
+
+	filename = (
+		f"{channel} – {title} "
+		f"({duration_str}, {date_str}).mp3"
+	)
+
+	return safe_filename(filename)
+
 
 
 # --------------------------------------------------
@@ -236,6 +299,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			await update.message.reply_audio(
 				audio=open(tmp_path, "rb"),
 				title=title,
+				filename=build_audio_filename(info),
 			)
 			
 			increment_downloads(user.id)
@@ -316,11 +380,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 		link = f"{BASE_URL}/audio/{final_path.name}"
+		filename_download = build_audio_filename(info)
 
 		await update.message.reply_text(
-			"✅ Your audio is ready:\n"
-			f"{link}\n\n"
-			"⏰ The file will be available for 12 hours."
+			f"✅ <b>Your audio is ready</b>:\n\n"
+			f"🎵 <a href=\"{link}\">{filename_download}</a>\n\n"
+			f"⏰ The file will be available for 12 hours.",
+			parse_mode="HTML",
+			disable_web_page_preview=True,
 		)
 
 		increment_downloads(user.id)
