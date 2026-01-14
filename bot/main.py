@@ -6,10 +6,10 @@ import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 
-import yt_dlp
+import yt_dlp # type: ignore
 
-from telegram import Update
-from telegram.ext import (
+from telegram import Update # type: ignore
+from telegram.ext import ( # type: ignore
 	ApplicationBuilder,
 	MessageHandler,
 	CommandHandler,
@@ -163,9 +163,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# --- Very long video ---
 	if duration >= LONG_VIDEO_SECONDS:
 		await update.message.reply_text(
-			"⚠️ This video is longer than 1.5 hours.\n\n"
-			"I can create a download link instead (64 kbps).\n"
-			"Please note: processing may take some time."
+			"⚠️ This video is longer than 1.5 hours. I can create a download link instead (64 kbps).\n\n"
+			"Please wait, processing may take some time."
 		)
 
 	# --- Telegram upload possible ---
@@ -211,11 +210,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		return
 
 	# --- Fallback: download link (always 64 kbps) ---
-	await update.message.reply_text(
-		"📎 File is too large for Telegram.\n"
-		"I will create a download link (64 kbps).\n"
-		"Please wait, this may take a while..."
-	)
+	if duration < LONG_VIDEO_SECONDS:
+		await update.message.reply_text(
+			"⚠️ This video is too large for Telegram upload. I can create a download link instead (64 kbps).\n\n"
+			"Please wait, processing may take some time."
+		)
 
 	file_id = uuid.uuid4().hex
 	final_path = STORAGE_DIR / f"{file_id}.mp3"
