@@ -113,6 +113,7 @@ def ydl_base_opts():
 				"path": "/usr/bin/node"
 			}
 		},
+		"remote_components": ["ejs:github"],
 	}
 
 
