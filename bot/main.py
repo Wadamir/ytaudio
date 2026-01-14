@@ -291,7 +291,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 			await update.message.reply_voice(
 				voice=open(tmp_path, "rb"),
-				title=title,
+				# title=title,
 				filename=build_audio_filename(info),
 			)
 			
