@@ -70,20 +70,21 @@ STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 MAX_TG_AUDIO_MB = 50
 MAX_STORAGE_HOURS = 12
 
-BITRATE_LEVELS = [96, 64]
-LONG_VIDEO_SECONDS = 7200  # 2 hours
+# BITRATE_LEVELS = [192, 160, 128, 96, 64]
+BITRATE_LEVELS = [64]
+LONG_VIDEO_SECONDS = 5400  # 1.5 hours
 
 # --------------------------------------------------
 # Helpers
 # --------------------------------------------------
-def estimate_ogg_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
+def estimate_mp3_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
 	return duration_sec * bitrate_kbps / 8 / 1024
 
 
 def cleanup_old_files():
 	now = time.time()
 
-	for f in STORAGE_DIR.glob("*.ogg"):
+	for f in STORAGE_DIR.glob("*.mp3"):
 		if now - f.stat().st_mtime > MAX_STORAGE_HOURS * 3600:
 			try:
 				f.unlink()
@@ -93,7 +94,7 @@ def cleanup_old_files():
 
 def choose_bitrate(duration: int) -> int:
 	for br in BITRATE_LEVELS:
-		size = estimate_ogg_size_mb(duration, br)
+		size = estimate_mp3_size_mb(duration, br)
 		if size <= MAX_TG_AUDIO_MB:
 			return br
 	return 64
@@ -136,7 +137,7 @@ def format_date(yyyymmdd: Optional[str]) -> str:
 def build_audio_filename(info: dict) -> str:
 	"""
 	Build human-readable audio filename:
-	Channel – Title (HH:MM, YYYY-MM-DD).ogg
+	Channel – Title (HH:MM, YYYY-MM-DD).mp3
 	"""
 	channel = (
 		info.get("channel")
@@ -153,7 +154,7 @@ def build_audio_filename(info: dict) -> str:
 
 	filename = (
 		f"{channel} – {title} "
-		f"({duration_str}, {date_str}).ogg"
+		f"({duration_str}, {date_str}).mp3"
 	)
 
 	return safe_filename(filename)
@@ -236,7 +237,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		return
 
 	chosen_bitrate = choose_bitrate(duration)
-	estimated_size = estimate_ogg_size_mb(duration, chosen_bitrate)
+	estimated_size = estimate_mp3_size_mb(duration, chosen_bitrate)
 	estimated_size_mb = round(estimated_size, 2)
 
 	logging.info(
@@ -249,7 +250,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# --- Very long video ---
 	if duration >= LONG_VIDEO_SECONDS:
 		await update.message.reply_text(
-			"⚠️ This video is longer than 2 hours. I can create a download link instead (64 kbps).\n\n"
+			"⚠️ This video is longer than 1.5 hours. I can create a download link instead (64 kbps).\n\n"
 			"Please wait, processing may take some time."
 		)
 
@@ -260,7 +261,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 		tmp_id = uuid.uuid4().hex
-		# tmp_path = Path(f"/tmp/{tmp_id}.ogg")
+		tmp_path = Path(f"/tmp/{tmp_id}.mp3")
 
 		opts = ydl_base_opts()
 		opts.update({
@@ -269,42 +270,28 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
-					"preferredcodec": "opus",
-					"preferredquality": "64",
-				},
-				{
-					"key": "EmbedThumbnail",
-				},
-				{
-					"key": "FFmpegMetadata",
+					"preferredcodec": "mp3",
+					"preferredquality": str(chosen_bitrate),
 				},
 			],
 			"postprocessor_args": [
-				"-metadata", f"title={title}",
-				"-metadata", f"artist={info.get('uploader', '')}",
-				"-metadata", "album=YouTube",
-				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-				"-metadata", "encoded_by=YouTube Audio Downloader",
+				"-ac", "1",          # mono
+				"-ar", "24000",      # speech-friendly sample rate
+				"-map_metadata", "-1",  # remove metadata
 			],
 		})
 
-		tmp_path = None
-
 		try:
 			with yt_dlp.YoutubeDL(opts) as ydl:
-				info_dl = ydl.extract_info(url, download=True)
+				ydl.extract_info(url, download=True)
 
-			tmp_path = Path(
-				info_dl.get("_filename")
-				or info_dl.get("requested_downloads")[0].get("filepath")
-			)
-
-			real_size_mb = round((tmp_path.stat().st_size / 1024 / 1024), 2)
-			logging.info(f"Real size: {real_size_mb} MB | Bitrate: {chosen_bitrate} kbps")
+			real_size = tmp_path.stat().st_size / 1024 / 1024
+			real_size_mb = round(real_size, 2)
+			logging.info(f"Real size: {real_size:.1f} MB | Bitrate: {chosen_bitrate} kbps")
 
 			await update.message.reply_voice(
 				voice=open(tmp_path, "rb"),
-				# title=title,
+				title=title,
 				filename=build_audio_filename(info),
 			)
 			
@@ -341,11 +328,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			)
 
 		finally:
-			if tmp_path and tmp_path.exists():
-				try:
-					tmp_path.unlink()
-				except Exception:
-					logging.exception("Failed to remove temp file")
+			if tmp_path.exists():
+				tmp_path.unlink()
 
 		return
 
@@ -357,7 +341,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 	file_id = uuid.uuid4().hex
-	final_path = STORAGE_DIR / f"{file_id}.ogg"
+	final_path = STORAGE_DIR / f"{file_id}.mp3"
 
 	opts = ydl_base_opts()
 	opts.update({
@@ -366,7 +350,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		"postprocessors": [
 			{
 				"key": "FFmpegExtractAudio",
-				"preferredcodec": "ogg",
+				"preferredcodec": "mp3",
 				"preferredquality": "64",
 			},
 			{
@@ -379,12 +363,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		with yt_dlp.YoutubeDL(opts) as ydl:
 			ydl.extract_info(url, download=True)
 
-		tmp_ogg = Path(f"/tmp/{file_id}.ogg")
-		shutil.move(str(tmp_ogg), str(final_path))
+		tmp_mp3 = Path(f"/tmp/{file_id}.mp3")
+		shutil.move(str(tmp_mp3), str(final_path))
 
 		size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
 		logging.info(
-			f"File saved: {final_path.name} | Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
+			f"File saved: {final_path.name} | "
+			f"Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
 		)
 
 		link = f"{BASE_URL}/audio/{final_path.name}"
