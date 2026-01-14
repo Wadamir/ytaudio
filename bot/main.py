@@ -174,6 +174,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	chosen_bitrate = choose_bitrate(duration)
 	estimated_size = estimate_mp3_size_mb(duration, chosen_bitrate)
+	estimated_size_mb = round(estimated_size, 2)
 
 	logging.info(
 		f"Video: {title} | "
@@ -202,11 +203,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		opts.update({
 			"format": "bestaudio/best",
 			"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
-			"postprocessors": [{
-				"key": "FFmpegExtractAudio",
-				"preferredcodec": "mp3",
-				"preferredquality": str(chosen_bitrate),
-			}],
+			"postprocessors": [
+				{
+					"key": "FFmpegExtractAudio",
+					"preferredcodec": "mp3",
+					"preferredquality": str(chosen_bitrate),
+				},
+				{
+					"key": "EmbedThumbnail",
+				},
+				{
+					"key": "FFmpegMetadata",
+				},
+			],
+			"postprocessor_args": [
+				"-metadata", f"title={title}",
+				"-metadata", f"artist={info.get('uploader', '')}",
+				"-metadata", "album=YouTube",
+				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
+				"-metadata", "encoded_by=YouTube Audio Downloader",
+			],
 		})
 
 		try:
@@ -214,6 +230,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				ydl.extract_info(url, download=True)
 
 			real_size = tmp_path.stat().st_size / 1024 / 1024
+			real_size_mb = round(real_size, 2)
 			logging.info(f"Real size: {real_size:.1f} MB | Bitrate: {chosen_bitrate} kbps")
 
 			await update.message.reply_audio(
@@ -229,8 +246,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				video_title=title,
 				duration_seconds=duration,
 				chosen_bitrate=chosen_bitrate,
-				estimated_size_mb=estimated_size,
-				real_size_mb=real_size,
+				estimated_size_mb=estimated_size_mb,
+				real_size_mb=real_size_mb,
 				delivery_method="telegram",
 				status="success",
 			)
@@ -273,11 +290,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	opts.update({
 		"format": "bestaudio/best",
 		"outtmpl": f"/tmp/{file_id}.%(ext)s",
-		"postprocessors": [{
-			"key": "FFmpegExtractAudio",
-			"preferredcodec": "mp3",
-			"preferredquality": "64",
-		}],
+		"postprocessors": [
+			{
+				"key": "FFmpegExtractAudio",
+				"preferredcodec": "mp3",
+				"preferredquality": "64",
+			},
+			{
+				"key": "FFmpegMetadata",
+			},
+		],
 	})
 
 	try:
@@ -287,7 +309,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		tmp_mp3 = Path(f"/tmp/{file_id}.mp3")
 		shutil.move(str(tmp_mp3), str(final_path))
 
-		size_mb = final_path.stat().st_size / 1024 / 1024
+		size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
 		logging.info(
 			f"File saved: {final_path.name} | "
 			f"Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
@@ -309,7 +331,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			video_title=title,
 			duration_seconds=duration,
 			chosen_bitrate=64,
-			estimated_size_mb=estimated_size,
+			estimated_size_mb=estimated_size_mb,
 			real_size_mb=size_mb,
 			delivery_method="link",
 			status="success",
@@ -329,7 +351,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			video_title=title if "title" in locals() else None,
 			duration_seconds=duration if "duration" in locals() else None,
 			chosen_bitrate=chosen_bitrate if "chosen_bitrate" in locals() else None,
-			estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+			estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 			real_size_mb=None,
 			delivery_method="failed",
 			status="failed",
