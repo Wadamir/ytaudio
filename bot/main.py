@@ -2,6 +2,7 @@ import os
 import uuid
 import logging
 import time
+import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 
@@ -169,7 +170,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	# --- Telegram upload possible ---
 	if estimated_size <= MAX_TG_AUDIO_MB:
-		await update.message.reply_text("⏳ Downloading audio...")
+		await update.message.reply_text(
+            f"⏳ Downloading audio: {chosen_bitrate} kbps (~{estimated_size:.1f} MB)"
+        )
 
 		tmp_id = uuid.uuid4().hex
 		tmp_path = Path(f"/tmp/{tmp_id}.mp3")
@@ -233,10 +236,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			ydl.extract_info(url, download=True)
 
 		tmp_mp3 = Path(f"/tmp/{file_id}.mp3")
-		tmp_mp3.replace(final_path)
+		shutil.move(str(tmp_mp3), str(final_path))
 
 		size_mb = final_path.stat().st_size / 1024 / 1024
-		logging.info(f"Real size: {size_mb:.1f} MB | Bitrate: 64 kbps")
+		logging.info(
+			f"File saved: {final_path.name} | "
+			f"Real size: {size_mb:.1f} MB | Bitrate: 64 kbps"
+		)
 
 		link = f"{BASE_URL}/audio/{final_path.name}"
 
