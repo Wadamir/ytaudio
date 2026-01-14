@@ -280,16 +280,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				{
 					"key": "EmbedThumbnail",
 				},
-				{
-					"key": "FFmpegMetadata",
-				},
-			],
-			"postprocessor_args": [
-				"-metadata", f"title={title}",
-				"-metadata", f"artist={info.get('uploader', '')}",
-				"-metadata", "album=YouTube",
-				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-				"-metadata", "encoded_by=YouTube Audio Downloader",
 			],
 		})
 
@@ -309,8 +299,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			logging.info(f"Real size: {real_size:.1f} MB | Bitrate: {chosen_bitrate} kbps")
 
 			await update.message.reply_audio(
-				audio=open(tmp_path, "rb"),
+				audio=open(tmp_m4a, "rb"),
 				title=title,
+				performer=info.get("uploader"),
+				duration=duration,
 				filename=build_audio_filename(info).replace(".mp3", ".m4a"),
 			)
 			
