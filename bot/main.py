@@ -46,6 +46,10 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
 	raise RuntimeError("BOT_TOKEN is not set")
 
+BOT_USERNAME = os.getenv("BOT_USERNAME", "@ytaudio_down_bot")
+BOT_TITLE = os.getenv("BOT_TITLE", "Yura Downloader")
+BOT_CAPTION = os.getenv("BOT_CAPTION", "🎧 Downloaded via 👉 ")
+
 APP_ENV = os.getenv("APP_ENV", "prod")
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0"))
 
@@ -345,6 +349,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 						performer=info.get("uploader"),
 						duration=duration,
 						filename=build_audio_filename(info),
+						caption=f"{BOT_CAPTION} {BOT_USERNAME} {BOT_TITLE}",
 					)
 
 				increment_downloads(user.id)
@@ -416,8 +421,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				"-metadata", f"title={title}",
 				"-metadata", f"artist={info.get('uploader', '')}",
 				"-metadata", "album=YouTube",
-				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-				"-metadata", "encoded_by=YouTube Audio Downloader",
+				"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME} {BOT_TITLE}",
+				"-metadata", f"encoded_by={BOT_USERNAME}",
 			],
 		})
 
@@ -445,9 +450,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			filename_download = build_audio_filename(info)
 
 			await update.message.reply_text(
-				f"✅ <b>Your audio is ready</b>:\n\n"
-				f"🎵 <a href=\"{link}\">{filename_download}</a>\n\n"
-				f"⏰ The file will be available for 12 hours.",
+				f"✅ <b>Your audio is ready</b>:\n"
+				f"🎵 <a href=\"{link}\">{filename_download}</a>\n"
+				f"⏰ The file will be available for 12 hours.\n\n",
+				f"{BOT_CAPTION} {BOT_USERNAME} {BOT_TITLE}",
 				parse_mode="HTML",
 				disable_web_page_preview=True,
 			)
