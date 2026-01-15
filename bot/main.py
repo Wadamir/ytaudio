@@ -303,6 +303,10 @@ async def process_job(job: dict):
 						"preferredquality": str(AUDIO_BITRATE_KBPS),
 					},
 					{
+						"key": "FFmpegThumbnailsConvertor",
+						"format": "jpg",
+					},					
+					{
 						"key": "EmbedThumbnail",
 					},
 					{
@@ -345,6 +349,7 @@ async def process_job(job: dict):
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
 					)
+				await status_msg.delete()
 
 				increment_downloads(user.id)
 				log_download(
@@ -409,6 +414,10 @@ async def process_job(job: dict):
 					"preferredquality": str(AUDIO_BITRATE_KBPS),
 				},
 				{
+					"key": "FFmpegThumbnailsConvertor",
+					"format": "jpg",
+				},				
+				{
 					"key": "EmbedThumbnail",
 				},
 				{
@@ -447,14 +456,18 @@ async def process_job(job: dict):
 			link = f"{BASE_URL}/audio/{final_path.name}"
 			filename_download = build_audio_filename(info)
 
-			await status_msg.reply_text(
-				f"✅ <b>Your audio is ready</b>:\n"
-				f"🎵 <a href=\"{link}\">{filename_download}</a>\n"
-				f"⏰ The file will be available for 12 hours.\n\n",
-				f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
+			thumb_url = info.get("thumbnail")
+			await status_msg.reply_photo(
+				photo=thumb_url,
+				caption=(
+					f"✅ <b>Your audio is ready</b>\n\n"
+					f"🎵 <a href=\"{link}\">{filename_download}</a>\n"
+					f"⏰ Available for 12 hours\n\n"
+					f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>"
+				),
 				parse_mode="HTML",
-				disable_web_page_preview=True,
 			)
+			await status_msg.delete()
 
 			increment_downloads(user.id)
 			log_download(
@@ -507,7 +520,7 @@ async def process_job(job: dict):
 async def post_init(application):
 	for i in range(DOWNLOAD_WORKERS):
 		application.create_task(download_worker(i + 1))
-		
+
 
 # --------------------------------------------------
 # Handlers
