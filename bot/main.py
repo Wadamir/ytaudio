@@ -29,12 +29,6 @@ from db import (
 	get_total_users,
 )
 
-# --------------------------------------------------
-# Download queue control
-# --------------------------------------------------
-DOWNLOAD_WORKERS = 2
-download_queue: asyncio.Queue = asyncio.Queue()
-
 
 # --------------------------------------------------
 # Logging
@@ -47,6 +41,12 @@ logging.basicConfig(
 # Reduce telegram polling noise
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# --------------------------------------------------
+# Download queue control
+# --------------------------------------------------
+DOWNLOAD_WORKERS = 2
+download_queue: asyncio.Queue = asyncio.Queue()
 
 # --------------------------------------------------
 # Environment
@@ -94,7 +94,7 @@ MAX_STORAGE_HOURS = 12 			# How long to keep files on disk
 LONG_VIDEO_SECONDS = 7200 		# 2 hours
 
 # --------------------------------------------------
-# Helpers
+# Helpers | utils
 # --------------------------------------------------
 def estimate_audio_size_mb(duration_sec: int, bitrate_kbps: int) -> float:
 	"""
@@ -196,7 +196,7 @@ def ydl_base_opts():
 
 
 # --------------------------------------------------
-# Handlers
+# Workers | background tasks
 # --------------------------------------------------
 async def download_worker(worker_id: int):
 	logging.info(f"Worker #{worker_id} started")
@@ -501,7 +501,17 @@ async def process_job(job: dict):
 		await status_msg.edit_text("❌ An error occurred during processing. Please try again later.")
 
 
+# --------------------------------------------------
+# Application lifecycle hooks
+# --------------------------------------------------
+async def post_init(application):
+	for i in range(DOWNLOAD_WORKERS):
+		application.create_task(download_worker(i + 1))
+		
 
+# --------------------------------------------------
+# Handlers
+# --------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if not update.message or not update.message.text:
 		return
@@ -549,10 +559,15 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
 	init_db()
 
-	app = ApplicationBuilder().token(BOT_TOKEN).build()
+	app = (
+		ApplicationBuilder()
+		.token(BOT_TOKEN)
+		.post_init(post_init)
+		.build()
+	)
 
-	for i in range(DOWNLOAD_WORKERS):
-		app.create_task(download_worker(i + 1))
+	# for i in range(DOWNLOAD_WORKERS):
+	# 	app.create_task(download_worker(i + 1))
 
 	app.add_handler(CommandHandler("stats", stats_handler))
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
