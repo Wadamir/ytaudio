@@ -338,6 +338,13 @@ async def process_job(job: dict):
 				real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
 				logging.info(f"Real size: {real_size_mb:.1f} MB")
 
+				thumb_url = info.get("thumbnail")
+				if thumb_url:
+					# --- Send thumbnail ---
+					thumb_msg = await status_msg.reply_photo(
+						photo=thumb_url,
+					)
+
 				# --- Send audio ---
 				with open(tmp_path, "rb") as f:
 					await status_msg.reply_audio(
@@ -348,6 +355,7 @@ async def process_job(job: dict):
 						filename=build_audio_filename(info),
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
+						reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
 					)
 				await status_msg.delete()
 
