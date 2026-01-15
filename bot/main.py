@@ -30,13 +30,11 @@ from db import (
 )
 
 # --------------------------------------------------
-# Queued tasks
+# Download queue control
 # --------------------------------------------------
-MAX_CONCURRENT_JOBS = 2
-download_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
+DOWNLOAD_WORKERS = 2
+download_queue: asyncio.Queue = asyncio.Queue()
 
-queue_lock = asyncio.Lock()
-queue_counter = 0
 
 # --------------------------------------------------
 # Logging
@@ -177,15 +175,6 @@ def build_audio_filename(info: dict) -> str:
 	return safe_filename(filename)
 
 
-async def get_queue_position():
-	global queue_counter
-	async with queue_lock:
-		active = MAX_CONCURRENT_JOBS - download_semaphore._value
-		waiting = max(queue_counter - active, 0)
-		queue_counter += 1
-		return waiting + 1
-
-
 # --------------------------------------------------
 # yt-dlp base options
 # --------------------------------------------------
@@ -209,77 +198,66 @@ def ydl_base_opts():
 # --------------------------------------------------
 # Handlers
 # --------------------------------------------------
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if not update.message or not update.message.text:
-		return
-	
-	queued = False
-	
-	info = None
-	
-	# Temporary messages to delete later
-	temp_messages: list = []
+async def download_worker(worker_id: int):
+	logging.info(f"Worker #{worker_id} started")
 
-	async def temp_reply(text: str):
-		msg = await update.message.reply_text(text)
-		temp_messages.append(msg)
-		return msg
-	
-	async def clear_temp_replies():
-		for msg in temp_messages:
-			try:
-				await msg.delete()
-			except Exception:
-				pass
+	while True:
+		job = await download_queue.get()
+
+		try:
+			await process_job(job)
+		except Exception:
+			logging.exception("Worker job failed")
+		finally:
+			download_queue.task_done()
+
+
+async def process_job(job: dict):
+	user = job["user"]
+	url = job["url"]
+	status_msg = job["status_msg"]
+
+	info = None
 
 	try:
-		user = update.effective_user
-		register_user(user)
+		await status_msg.edit_text("🔍 Reading video info…")
 
-		cleanup_old_files()
-
-		url = update.message.text.strip()
-
-		if not re.search(r"(youtube\.com|youtu\.be)", url):
-			await temp_reply("❌ Please send a valid YouTube link.")
-			return
-
-		await temp_reply("⏳ Checking video info...")
 
 		# --- Extract metadata ---
 		try:
 			opts = ydl_base_opts()
 			opts["skip_download"] = True
 
-			with yt_dlp.YoutubeDL(opts) as ydl:
-				info = ydl.extract_info(url, download=False)
-
+			info = await asyncio.to_thread(
+				lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+			)
 		except Exception as e:
 			logging.exception("Metadata extraction failed")
-			await update.message.reply_text("❌ Failed to read video info.")
-		
+			await status_msg.edit_text("❌ Failed to read video info.")
+
 			log_download(
 				user_id=user.id,
 				video_url=url,
-				video_id=info.get("id") if info else None,
-				video_title=title if "title" in locals() else None,
-				duration_seconds=duration if "duration" in locals() else None,
+				video_id=None,
+				video_title=None,
+				duration_seconds=None,
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
-				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+				estimated_size_mb=None,
 				real_size_mb=None,
 				delivery_method="failed",
 				status="failed",
 				error_message=str(e),
 			)
-
 			return
 
-		duration = info.get("duration")
 		title = info.get("title", "audio")
+		duration = info.get("duration", 0)
 
+
+		# -- Validate duration ---
 		if not duration:
 			logging.warning("Video duration unknown")
-			await update.message.reply_text("❌ Cannot determine video duration.")
+			await status_msg.edit_text("❌ Cannot determine video duration.")
 
 			log_download(
 				user_id=user.id,
@@ -297,6 +275,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 			return
 
+
 		estimated_size = estimate_audio_size_mb(duration, AUDIO_BITRATE_KBPS)
 		estimated_size_mb = round(estimated_size, 2)
 
@@ -306,132 +285,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			f"Estimated size: {estimated_size_mb:.1f} MB"
 		)
 
+
 		# --- Telegram upload possible ---
 		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
-			queue_position = await get_queue_position()
-			queued = True
-			await temp_reply(f"⏳ Queuing download task... Your position in queue {queue_position}")
-			async with download_semaphore:
-				await temp_reply(
-					f"⏳ Downloading audio: ~{estimated_size_mb:.1f} MB"
-				)
+			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB")
 
-				tmp_id = uuid.uuid4().hex
-
-				opts = ydl_base_opts()
-				opts.update({
-					"format": "bestaudio/best",
-					"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
-					"postprocessors": [
-						{
-							"key": "FFmpegExtractAudio",
-							"preferredcodec": AUDIO_CODEC,
-							"preferredquality": str(AUDIO_BITRATE_KBPS),
-						},
-						{
-							"key": "EmbedThumbnail",
-						},
-						{
-							"key": "FFmpegMetadata",
-						},
-					],
-					"postprocessor_args": [
-						"-metadata", f"title={title}",
-						"-metadata", f"artist={info.get('uploader', '')}",
-						"-metadata", "album=YouTube",
-						"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-					],
-				})
-
-				try:
-					await asyncio.to_thread(
-						lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
-					)
-
-					# 🔑 Search for file
-					tmp_dir = Path("/tmp")
-					files = list(tmp_dir.glob(f"{tmp_id}.*"))
-
-					if not files:
-						raise RuntimeError("Downloaded audio file not found")
-
-					tmp_path = files[0]
-
-					real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
-					logging.info(f"Real size: {real_size_mb:.1f} MB")
-
-					# 🔑 Send audio
-					with open(tmp_path, "rb") as f:
-						await update.message.reply_audio(
-							audio=f,
-							title=title,
-							performer=info.get("uploader"),
-							duration=duration,
-							filename=build_audio_filename(info),
-							caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
-							parse_mode="HTML",
-						)
-
-					increment_downloads(user.id)
-					log_download(
-						user_id=user.id,
-						video_url=url,
-						video_id=info.get("id"),
-						video_title=title,
-						duration_seconds=duration,
-						chosen_bitrate=AUDIO_BITRATE_KBPS,
-						estimated_size_mb=estimated_size_mb,
-						real_size_mb=real_size_mb,
-						delivery_method="telegram",
-						status="success",
-					)
-
-				except Exception as e:
-					logging.exception("Telegram upload failed")
-					await update.message.reply_text("❌ Failed to send audio.")
-					log_download(
-						user_id=user.id,
-						video_url=url,
-						video_id=info.get("id") if info else None,
-						video_title=title if "title" in locals() else None,
-						duration_seconds=duration if "duration" in locals() else None,
-						chosen_bitrate=AUDIO_BITRATE_KBPS,
-						estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
-						real_size_mb=None,
-						delivery_method="failed",
-						status="failed",
-						error_message=str(e),
-					)
-
-				finally:
-					if "tmp_path" in locals() and tmp_path.exists():
-						tmp_path.unlink()
-
-				return
-
-
-		# --- Fallback: download link (always 64 kbps) ---
-		queue_position = await get_queue_position()
-		await temp_reply(f"⏳ Queuing download task... Your position in queue {queue_position}")
-		async with download_semaphore:
-			if duration >= LONG_VIDEO_SECONDS:
-				await temp_reply(
-					"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
-					"Please wait, processing may take some time."
-				)		
-			else:
-				await temp_reply(
-					"⚠️ This video is too large for Telegram upload. I can create a download link instead.\n\n"
-					"Please wait, processing may take some time."
-				)
-
-			file_id = uuid.uuid4().hex
-			final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
+			tmp_id = uuid.uuid4().hex
 
 			opts = ydl_base_opts()
 			opts.update({
 				"format": "bestaudio/best",
-				"outtmpl": f"/tmp/{file_id}.%(ext)s",
+				"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
 				"postprocessors": [
 					{
 						"key": "FFmpegExtractAudio",
@@ -449,8 +313,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 					"-metadata", f"title={title}",
 					"-metadata", f"artist={info.get('uploader', '')}",
 					"-metadata", "album=YouTube",
-					"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
-					"-metadata", f"encoded_by={BOT_USERNAME}",
+					"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
 				],
 			})
 
@@ -459,32 +322,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 					lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
 				)
 
+				# 🔑 Search for file
 				tmp_dir = Path("/tmp")
-				files = list(tmp_dir.glob(f"{file_id}.*"))
+				files = list(tmp_dir.glob(f"{tmp_id}.*"))
 
 				if not files:
 					raise RuntimeError("Downloaded audio file not found")
-
+				
 				tmp_path = files[0]
-				shutil.move(str(tmp_path), str(final_path))
 
-				size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
-				logging.info(
-					f"File saved: {final_path.name} | "
-					f"Real size: {size_mb:.1f} MB"
-				)
+				real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
+				logging.info(f"Real size: {real_size_mb:.1f} MB")
 
-				link = f"{BASE_URL}/audio/{final_path.name}"
-				filename_download = build_audio_filename(info)
-
-				await update.message.reply_text(
-					f"✅ <b>Your audio is ready</b>:\n"
-					f"🎵 <a href=\"{link}\">{filename_download}</a>\n"
-					f"⏰ The file will be available for 12 hours.\n\n",
-					f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
-					parse_mode="HTML",
-					disable_web_page_preview=True,
-				)
+				# --- Send audio ---
+				with open(tmp_path, "rb") as f:
+					await status_msg.reply_audio(
+						audio=f,
+						title=title,
+						performer=info.get("uploader"),
+						duration=duration,
+						filename=build_audio_filename(info),
+						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
+						parse_mode="HTML",
+					)
 
 				increment_downloads(user.id)
 				log_download(
@@ -495,18 +355,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 					duration_seconds=duration,
 					chosen_bitrate=AUDIO_BITRATE_KBPS,
 					estimated_size_mb=estimated_size_mb,
-					real_size_mb=size_mb,
-					delivery_method="link",
+					real_size_mb=real_size_mb,
+					delivery_method="telegram",
 					status="success",
-					file_path=str(final_path),
-					download_url=link,
-					fallback_reason="too_large",
 				)
 
 			except Exception as e:
-				logging.exception("Download link generation failed")
-				await update.message.reply_text("❌ Failed to create download link.")
-
+				logging.exception("Telegram upload failed")
+				await status_msg.edit_text("❌ Failed to send audio.")
 				log_download(
 					user_id=user.id,
 					video_url=url,
@@ -515,21 +371,163 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 					duration_seconds=duration if "duration" in locals() else None,
 					chosen_bitrate=AUDIO_BITRATE_KBPS,
 					estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
-					real_size_mb=None,
+					real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
 					delivery_method="failed",
 					status="failed",
 					error_message=str(e),
-				)
+				)	
 
+			finally:
+				if "tmp_path" in locals() and tmp_path.exists():
+					tmp_path.unlink()
+				
+			return
+		
+		# --- Fallback: download link ---
+		if duration >= LONG_VIDEO_SECONDS:
+			await status_msg.edit_text(
+				"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
+				"Please wait, processing may take some time."
+			)		
+		else:
+			await status_msg.edit_text(
+				"⚠️ This video is too large for Telegram upload. I can create a download link instead.\n\n"
+				"Please wait, processing may take some time."
+			)
+
+		file_id = uuid.uuid4().hex
+		final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
+
+		opts = ydl_base_opts()
+		opts.update({
+			"format": "bestaudio/best",
+			"outtmpl": f"/tmp/{file_id}.%(ext)s",
+			"postprocessors": [
+				{
+					"key": "FFmpegExtractAudio",
+					"preferredcodec": AUDIO_CODEC,
+					"preferredquality": str(AUDIO_BITRATE_KBPS),
+				},
+				{
+					"key": "EmbedThumbnail",
+				},
+				{
+					"key": "FFmpegMetadata",
+				},
+			],
+			"postprocessor_args": [
+				"-metadata", f"title={title}",
+				"-metadata", f"artist={info.get('uploader', '')}",
+				"-metadata", "album=YouTube",
+				"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
+				"-metadata", f"encoded_by={BOT_USERNAME}",
+			],
+		})
+
+		try:
+			await asyncio.to_thread(
+				lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
+			)
+
+			tmp_dir = Path("/tmp")
+			files = list(tmp_dir.glob(f"{file_id}.*"))
+
+			if not files:
+				raise RuntimeError("Downloaded audio file not found")
+
+			tmp_path = files[0]
+			shutil.move(str(tmp_path), str(final_path))
+
+			size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
+			logging.info(
+				f"File saved: {final_path.name} | "
+				f"Real size: {size_mb:.1f} MB"
+			)
+
+			link = f"{BASE_URL}/audio/{final_path.name}"
+			filename_download = build_audio_filename(info)
+
+			await status_msg.reply_text(
+				f"✅ <b>Your audio is ready</b>:\n"
+				f"🎵 <a href=\"{link}\">{filename_download}</a>\n"
+				f"⏰ The file will be available for 12 hours.\n\n",
+				f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
+				parse_mode="HTML",
+				disable_web_page_preview=True,
+			)
+
+			increment_downloads(user.id)
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id"),
+				video_title=title,
+				duration_seconds=duration,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
+				estimated_size_mb=estimated_size_mb,
+				real_size_mb=size_mb,
+				delivery_method="link",
+				status="success",
+				file_path=str(final_path),
+				download_url=link,
+				fallback_reason="too_large",
+			)
+
+		except Exception as e:
+			logging.exception("Download link generation failed")
+			await status_msg.edit_text("❌ Failed to create download link.")
+
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id") if info else None,
+				video_title=title if "title" in locals() else None,
+				duration_seconds=duration if "duration" in locals() else None,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
+				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+				real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
+				delivery_method="failed",
+				status="failed",
+				error_message=str(e),
+			)
+
+		finally:
+			if "tmp_path" in locals() and tmp_path.exists():
+				tmp_path.unlink()
+
+	
 	except Exception as e:
-		logging.exception("General handler error")
-		await update.message.reply_text("❌ An unexpected error occurred.")
+		logging.exception("Download worker failed")
+		await status_msg.edit_text("❌ An error occurred during processing. Please try again later.")
 
-	finally:
-		if queued:
-			async with queue_lock:
-				queue_counter -= 1
-		await clear_temp_replies()
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+	if not update.message or not update.message.text:
+		return
+
+	user = update.effective_user
+	register_user(user)
+
+	cleanup_old_files()
+
+	url = update.message.text.strip()
+
+	if not re.search(r"(youtube\.com|youtu\.be)", url):
+		await update.message.reply_text("❌ Please send a valid YouTube link.")
+		return
+
+	# 🔑 Status message
+	status_msg = await update.message.reply_text("⏳ Queuing download task... Please wait. ")
+
+	job = {
+		"user": user,
+		"url": url,
+		"status_msg": status_msg,
+	}
+
+	await download_queue.put(job)
+
 
 
 # --------------------------------------------------
@@ -552,6 +550,9 @@ def main():
 	init_db()
 
 	app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+	for i in range(DOWNLOAD_WORKERS):
+		app.create_task(download_worker(i + 1))
 
 	app.add_handler(CommandHandler("stats", stats_handler))
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
