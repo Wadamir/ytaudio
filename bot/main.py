@@ -72,9 +72,9 @@ AUDIO_CONTAINER = "m4a" 		# m4a | mp3 | ogg
 # BITRATE_LEVELS = [192, 160, 128, 96, 64]
 AUDIO_BITRATE_KBPS = 64	  		# 64 | 96 | 128 | 160 | 192
 
-MAX_TG_AUDIO_EFFECTIVE_MB = 50 			# Telegram upload limit
+MAX_TG_AUDIO_MB = 50 			# Telegram upload limit
 MAX_TG_AUDIO_MARGIN_MB = 5 		# Safety margin
-MAX_TG_AUDIO_EFFECTIVE_MB = MAX_TG_AUDIO_EFFECTIVE_MB - MAX_TG_AUDIO_MARGIN_MB
+MAX_TG_AUDIO_EFFECTIVE_MB = MAX_TG_AUDIO_MB - MAX_TG_AUDIO_MARGIN_MB
 
 MAX_STORAGE_HOURS = 12 			# How long to keep files on disk
 
@@ -189,83 +189,216 @@ def ydl_base_opts():
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if not update.message or not update.message.text:
 		return
+	
+	info = None
+	
+	# Temporary messages to delete later
+	temp_messages: list = []
 
-	user = update.effective_user
-	register_user(user)
+	async def temp_reply(text: str):
+		msg = await update.message.reply_text(text)
+		temp_messages.append(msg)
+		return msg
+	
+	async def clear_temp_replies():
+		for msg in temp_messages:
+			try:
+				await msg.delete()
+			except Exception:
+				pass
 
-	cleanup_old_files()
-
-	url = update.message.text.strip()
-
-	if "youtube.com" not in url and "youtu.be" not in url:
-		await update.message.reply_text("❌ Please send a valid YouTube link.")
-		return
-
-	await update.message.reply_text("⏳ Checking video info...")
-
-	# --- Extract metadata ---
 	try:
-		opts = ydl_base_opts()
-		opts["skip_download"] = True
+		user = update.effective_user
+		register_user(user)
 
-		with yt_dlp.YoutubeDL(opts) as ydl:
-			info = ydl.extract_info(url, download=False)
+		cleanup_old_files()
 
-	except Exception as e:
-		logging.exception("Metadata extraction failed")
-		await update.message.reply_text("❌ Failed to read video info.")
+		url = update.message.text.strip()
 
-		log_download(
-			user_id=user.id,
-			video_url=url,
-			video_id=info.get("id") if info else None,
-			video_title=title if "title" in locals() else None,
-			duration_seconds=duration if "duration" in locals() else None,
-			chosen_bitrate=AUDIO_BITRATE_KBPS,
-			estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
-			real_size_mb=None,
-			delivery_method="failed",
-			status="failed",
-			error_message=str(e),
+		if not re.search(r"(youtube\.com|youtu\.be)", url):
+			await temp_reply("❌ Please send a valid YouTube link.")
+			return
+
+		await temp_reply("⏳ Checking video info...")
+
+		# --- Extract metadata ---
+		try:
+			opts = ydl_base_opts()
+			opts["skip_download"] = True
+
+			with yt_dlp.YoutubeDL(opts) as ydl:
+				info = ydl.extract_info(url, download=False)
+
+		except Exception as e:
+			logging.exception("Metadata extraction failed")
+			await update.message.reply_text("❌ Failed to read video info.")
+		
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id") if info else None,
+				video_title=title if "title" in locals() else None,
+				duration_seconds=duration if "duration" in locals() else None,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
+				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+				real_size_mb=None,
+				delivery_method="failed",
+				status="failed",
+				error_message=str(e),
+			)
+
+			return
+
+		duration = info.get("duration")
+		title = info.get("title", "audio")
+
+		if not duration:
+			logging.warning("Video duration unknown")
+			await update.message.reply_text("❌ Cannot determine video duration.")
+
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id") if info else None,
+				video_title=title if "title" in locals() else None,
+				duration_seconds=duration if "duration" in locals() else None,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
+				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+				real_size_mb=None,
+				delivery_method="failed",
+				status="failed",
+				error_message="Unknown video duration",
+			)
+
+			return
+
+		estimated_size = estimate_audio_size_mb(duration, AUDIO_BITRATE_KBPS)
+		estimated_size_mb = round(estimated_size, 2)
+
+		logging.info(
+			f"Video: {title} | "
+			f"Duration: {duration}s | "
+			f"Estimated size: {estimated_size_mb:.1f} MB"
 		)
 
-		return
+		# --- Very long video ---
+		if duration >= LONG_VIDEO_SECONDS:
+			await temp_reply(
+				"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
+				"Please wait, processing may take some time."
+			)
 
-	duration = info.get("duration")
-	title = info.get("title", "audio")
+		# --- Telegram upload possible ---
+		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
+			await temp_reply(
+				f"⏳ Downloading audio: ~{estimated_size_mb:.1f} MB"
+			)
 
-	if not duration:
-		await update.message.reply_text("❌ Cannot determine video duration.")
-		return
+			tmp_id = uuid.uuid4().hex
 
-	estimated_size = estimate_audio_size_mb(duration, AUDIO_BITRATE_KBPS)
-	estimated_size_mb = round(estimated_size, 2)
+			opts = ydl_base_opts()
+			opts.update({
+				"format": "bestaudio/best",
+				"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
+				"postprocessors": [
+					{
+						"key": "FFmpegExtractAudio",
+						"preferredcodec": AUDIO_CODEC,
+						"preferredquality": str(AUDIO_BITRATE_KBPS),
+					},
+					{
+						"key": "EmbedThumbnail",
+					},
+					{
+						"key": "FFmpegMetadata",
+					},
+				],
+				"postprocessor_args": [
+					"-metadata", f"title={title}",
+					"-metadata", f"artist={info.get('uploader', '')}",
+					"-metadata", "album=YouTube",
+					"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
+				],
+			})
 
-	logging.info(
-		f"Video: {title} | "
-		f"Duration: {duration}s | "
-		f"Estimated size: {estimated_size_mb:.1f} MB"
-	)
+			try:
+				with yt_dlp.YoutubeDL(opts) as ydl:
+					ydl.extract_info(url, download=True)
 
-	# --- Very long video ---
-	if duration >= LONG_VIDEO_SECONDS:
-		await update.message.reply_text(
-			"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
-			"Please wait, processing may take some time."
-		)
+				# 🔑 Search for file
+				tmp_dir = Path("/tmp")
+				files = list(tmp_dir.glob(f"{tmp_id}.*"))
 
-	# --- Telegram upload possible ---
-	if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
-		await update.message.reply_text(
-			f"⏳ Downloading audio: ~{estimated_size_mb:.1f} MB"
-		)
+				if not files:
+					raise RuntimeError("Downloaded audio file not found")
 
-		tmp_id = uuid.uuid4().hex
+				tmp_path = files[0]
+
+				real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
+				logging.info(f"Real size: {real_size_mb:.1f} MB")
+
+				# 🔑 Send audio
+				with open(tmp_path, "rb") as f:
+					await update.message.reply_audio(
+						audio=f,
+						title=title,
+						performer=info.get("uploader"),
+						duration=duration,
+						filename=build_audio_filename(info),
+					)
+
+				increment_downloads(user.id)
+				log_download(
+					user_id=user.id,
+					video_url=url,
+					video_id=info.get("id"),
+					video_title=title,
+					duration_seconds=duration,
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=estimated_size_mb,
+					real_size_mb=real_size_mb,
+					delivery_method="telegram",
+					status="success",
+				)
+
+			except Exception as e:
+				logging.exception("Telegram upload failed")
+				await update.message.reply_text("❌ Failed to send audio.")
+				log_download(
+					user_id=user.id,
+					video_url=url,
+					video_id=info.get("id") if info else None,
+					video_title=title if "title" in locals() else None,
+					duration_seconds=duration if "duration" in locals() else None,
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+					real_size_mb=None,
+					delivery_method="failed",
+					status="failed",
+					error_message=str(e),
+				)
+
+			finally:
+				if "tmp_path" in locals() and tmp_path.exists():
+					tmp_path.unlink()
+
+			return
+
+
+		# --- Fallback: download link (always 64 kbps) ---
+		if duration < LONG_VIDEO_SECONDS:
+			await temp_reply(
+				"⚠️ This video is too large for Telegram upload. I can create a download link instead.\n\n"
+				"Please wait, processing may take some time."
+			)
+
+		file_id = uuid.uuid4().hex
+		final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
 
 		opts = ydl_base_opts()
 		opts.update({
 			"format": "bestaudio/best",
-			"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
+			"outtmpl": f"/tmp/{file_id}.%(ext)s",
 			"postprocessors": [
 				{
 					"key": "FFmpegExtractAudio",
@@ -284,6 +417,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				"-metadata", f"artist={info.get('uploader', '')}",
 				"-metadata", "album=YouTube",
 				"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
+				"-metadata", "encoded_by=YouTube Audio Downloader",
 			],
 		})
 
@@ -291,24 +425,31 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			with yt_dlp.YoutubeDL(opts) as ydl:
 				ydl.extract_info(url, download=True)
 
-			# 🔑 Search for file
+
 			tmp_dir = Path("/tmp")
-			files = list(tmp_dir.glob(f"{tmp_id}.*"))
+			files = list(tmp_dir.glob(f"{file_id}.*"))
 
 			if not files:
 				raise RuntimeError("Downloaded audio file not found")
 
 			tmp_path = files[0]
+			shutil.move(str(tmp_path), str(final_path))
 
-			real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
-			logging.info(f"Real size: {real_size_mb:.2f} MB")
+			size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
+			logging.info(
+				f"File saved: {final_path.name} | "
+				f"Real size: {size_mb:.1f} MB"
+			)
 
-			await update.message.reply_audio(
-				audio=open(tmp_path, "rb"),
-				title=title,
-				performer=info.get("uploader"),
-				duration=duration,
-				filename=build_audio_filename(info),
+			link = f"{BASE_URL}/audio/{final_path.name}"
+			filename_download = build_audio_filename(info)
+
+			await update.message.reply_text(
+				f"✅ <b>Your audio is ready</b>:\n\n"
+				f"🎵 <a href=\"{link}\">{filename_download}</a>\n\n"
+				f"⏰ The file will be available for 12 hours.",
+				parse_mode="HTML",
+				disable_web_page_preview=True,
 			)
 
 			increment_downloads(user.id)
@@ -320,14 +461,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				duration_seconds=duration,
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb,
-				real_size_mb=real_size_mb,
-				delivery_method="telegram",
+				real_size_mb=size_mb,
+				delivery_method="link",
 				status="success",
+				file_path=str(final_path),
+				download_url=link,
+				fallback_reason="too_large",
 			)
 
 		except Exception as e:
-			logging.exception("Telegram upload failed")
-			await update.message.reply_text("❌ Failed to send audio.")
+			logging.exception("Download link generation failed")
+			await update.message.reply_text("❌ Failed to create download link.")
 
 			log_download(
 				user_id=user.id,
@@ -343,114 +487,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				error_message=str(e),
 			)
 
-		finally:
-			if "tmp_path" in locals() and tmp_path.exists():
-				tmp_path.unlink()
-
-		return
-
-
-	# --- Fallback: download link (always 64 kbps) ---
-	if duration < LONG_VIDEO_SECONDS:
-		await update.message.reply_text(
-			"⚠️ This video is too large for Telegram upload. I can create a download link instead.\n\n"
-			"Please wait, processing may take some time."
-		)
-
-	file_id = uuid.uuid4().hex
-	final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
-
-	opts = ydl_base_opts()
-	opts.update({
-		"format": "bestaudio/best",
-		"outtmpl": f"/tmp/{file_id}.%(ext)s",
-		"postprocessors": [
-			{
-				"key": "FFmpegExtractAudio",
-				"preferredcodec": AUDIO_CODEC,
-				"preferredquality": str(AUDIO_BITRATE_KBPS),
-			},
-			{
-				"key": "EmbedThumbnail",
-			},
-			{
-				"key": "FFmpegMetadata",
-			},
-		],
-		"postprocessor_args": [
-			"-metadata", f"title={title}",
-			"-metadata", f"artist={info.get('uploader', '')}",
-			"-metadata", "album=YouTube",
-			"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-			"-metadata", "encoded_by=YouTube Audio Downloader",
-		],
-	})
-
-	try:
-		with yt_dlp.YoutubeDL(opts) as ydl:
-			ydl.extract_info(url, download=True)
-
-
-		tmp_dir = Path("/tmp")
-		files = list(tmp_dir.glob(f"{file_id}.*"))
-
-		if not files:
-			raise RuntimeError("Downloaded audio file not found")
-
-		tmp_path = files[0]
-		shutil.move(str(tmp_path), str(final_path))
-
-		size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
-		logging.info(
-			f"File saved: {final_path.name} | "
-			f"Real size: {size_mb:.1f} MB"
-		)
-
-		link = f"{BASE_URL}/audio/{final_path.name}"
-		filename_download = build_audio_filename(info)
-
-		await update.message.reply_text(
-			f"✅ <b>Your audio is ready</b>:\n\n"
-			f"🎵 <a href=\"{link}\">{filename_download}</a>\n\n"
-			f"⏰ The file will be available for 12 hours.",
-			parse_mode="HTML",
-			disable_web_page_preview=True,
-		)
-
-		increment_downloads(user.id)
-		log_download(
-			user_id=user.id,
-			video_url=url,
-			video_id=info.get("id"),
-			video_title=title,
-			duration_seconds=duration,
-			chosen_bitrate=AUDIO_BITRATE_KBPS,
-			estimated_size_mb=estimated_size_mb,
-			real_size_mb=size_mb,
-			delivery_method="link",
-			status="success",
-			file_path=str(final_path),
-			download_url=link,
-			fallback_reason="too_large",
-		)
-
 	except Exception as e:
-		logging.exception("Download link generation failed")
-		await update.message.reply_text("❌ Failed to create download link.")
+		logging.exception("General handler error")
+		await update.message.reply_text("❌ An unexpected error occurred.")
 
-		log_download(
-			user_id=user.id,
-			video_url=url,
-			video_id=info.get("id") if info else None,
-			video_title=title if "title" in locals() else None,
-			duration_seconds=duration if "duration" in locals() else None,
-			chosen_bitrate=AUDIO_BITRATE_KBPS,
-			estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
-			real_size_mb=None,
-			delivery_method="failed",
-			status="failed",
-			error_message=str(e),
-		)
+	finally:
+		await clear_temp_replies()
 
 
 # --------------------------------------------------
