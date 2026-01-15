@@ -349,7 +349,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 						performer=info.get("uploader"),
 						duration=duration,
 						filename=build_audio_filename(info),
-						caption=f"{BOT_CAPTION} {BOT_USERNAME} {BOT_TITLE}",
+						caption=f"{BOT_CAPTION} {BOT_USERNAME}",
 					)
 
 				increment_downloads(user.id)
@@ -421,7 +421,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				"-metadata", f"title={title}",
 				"-metadata", f"artist={info.get('uploader', '')}",
 				"-metadata", "album=YouTube",
-				"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME} {BOT_TITLE}",
+				"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
 				"-metadata", f"encoded_by={BOT_USERNAME}",
 			],
 		})
@@ -453,7 +453,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				f"✅ <b>Your audio is ready</b>:\n"
 				f"🎵 <a href=\"{link}\">{filename_download}</a>\n"
 				f"⏰ The file will be available for 12 hours.\n\n",
-				f"{BOT_CAPTION} {BOT_USERNAME} {BOT_TITLE}",
+				f"{BOT_CAPTION} {BOT_USERNAME}",
 				parse_mode="HTML",
 				disable_web_page_preview=True,
 			)
