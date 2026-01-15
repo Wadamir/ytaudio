@@ -456,13 +456,16 @@ async def process_job(job: dict):
 			shutil.move(str(tmp_path), str(final_path))
 
 			size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
-			logging.info(
-				f"File saved: {final_path.name} | "
-				f"Real size: {size_mb:.1f} MB"
-			)
 
 			link = f"{BASE_URL}/audio/{final_path.name}"
 			filename_download = build_audio_filename(info)
+
+			logging.info(
+				f"File saved: {final_path.name} | "
+				f"Real size: {size_mb:.1f} MB | "
+				f"Link: {link} | "
+				f"Filename: {filename_download}"
+			)
 
 			thumb_url = info.get("thumbnail")
 			await status_msg.reply_photo(
