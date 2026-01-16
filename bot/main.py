@@ -204,6 +204,24 @@ def extract_http_error_code(error: Exception) -> str | None:
 	return None
 
 
+def can_use_fast_path(info: dict, max_size_mb: float) -> bool:
+	formats = info.get("formats", [])
+	duration = info.get("duration", 0)
+
+	for f in formats:
+		if (
+			f.get("ext") == "m4a"
+			and f.get("acodec") == "mp4a.40.2"
+			and f.get("abr")  # audio bitrate known
+		):
+			abr = f["abr"]
+			estimated = estimate_audio_size_mb(duration, abr)
+			if estimated <= max_size_mb:
+				return True
+
+	return False
+
+
 
 # --------------------------------------------------
 # yt-dlp base options
@@ -223,6 +241,45 @@ def ydl_base_opts():
 		},
 		"remote_components": ["ejs:github"],
 	}
+
+
+def ydl_fast_audio_opts(tmp_id: str):
+	return {
+		**ydl_base_opts(),
+		"format": "bestaudio[ext=m4a]/bestaudio",
+		"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
+
+		# ❌ no audio postprocessors
+		"postprocessors": [
+			{
+				"key": "FFmpegMetadata",
+			},
+		],
+	}
+
+
+def ydl_slow_audio_opts(tmp_id: str, title: str, uploader: str):
+	return {
+		**ydl_base_opts(),
+		"format": "bestaudio/best",
+		"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
+		"postprocessors": [
+			{
+				"key": "FFmpegExtractAudio",
+				"preferredcodec": "aac",
+				"preferredquality": str(AUDIO_BITRATE_KBPS),
+			},
+			{
+				"key": "FFmpegMetadata",
+			},
+		],
+		"postprocessor_args": [
+			"-threads", "1",
+			"-metadata", f"title={title}",
+			"-metadata", f"artist={uploader}",
+		],
+	}
+
 
 
 # --------------------------------------------------
@@ -388,40 +445,50 @@ async def process_job(job: dict):
 		)
 
 
+		use_fast_path = can_use_fast_path(info, MAX_TG_AUDIO_EFFECTIVE_MB)
+
+		if use_fast_path:
+			await status_msg.edit_text("⚡ Downloading audio (fast mode)")
+			opts = ydl_fast_audio_opts(tmp_id)
+		else:
+			await status_msg.edit_text("⬇️ Downloading audio (re-encoding)")
+			opts = ydl_slow_audio_opts(tmp_id, title, info.get("uploader", ""))
+
+
 		# --- Telegram upload possible ---
 		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
 			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB{warning_line}")
 
 			tmp_id = uuid.uuid4().hex
 
-			opts = ydl_base_opts()
-			opts.update({
-				"format": "bestaudio/best",
-				"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
-				"postprocessors": [
-					{
-						"key": "FFmpegExtractAudio",
-						"preferredcodec": AUDIO_CODEC,
-						"preferredquality": str(AUDIO_BITRATE_KBPS),
-					},
-					{
-						"key": "FFmpegThumbnailsConvertor",
-						"format": "jpg",
-					},					
-					{
-						"key": "EmbedThumbnail",
-					},
-					{
-						"key": "FFmpegMetadata",
-					},
-				],
-				"postprocessor_args": [
-					"-metadata", f"title={title}",
-					"-metadata", f"artist={info.get('uploader', '')}",
-					"-metadata", "album=YouTube",
-					"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-				],
-			})
+			# opts = ydl_base_opts()
+			# opts.update({
+			# 	"format": "bestaudio/best",
+			# 	"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
+			# 	"postprocessors": [
+			# 		{
+			# 			"key": "FFmpegExtractAudio",
+			# 			"preferredcodec": AUDIO_CODEC,
+			# 			"preferredquality": str(AUDIO_BITRATE_KBPS),
+			# 		},
+			# 		{
+			# 			"key": "FFmpegThumbnailsConvertor",
+			# 			"format": "jpg",
+			# 		},					
+			# 		{
+			# 			"key": "EmbedThumbnail",
+			# 		},
+			# 		{
+			# 			"key": "FFmpegMetadata",
+			# 		},
+			# 	],
+			# 	"postprocessor_args": [
+			# 		"-metadata", f"title={title}",
+			# 		"-metadata", f"artist={info.get('uploader', '')}",
+			# 		"-metadata", "album=YouTube",
+			# 		"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
+			# 	],
+			# })
 
 			try:
 				await ytdlp_download_with_retry(
@@ -516,35 +583,35 @@ async def process_job(job: dict):
 		file_id = uuid.uuid4().hex
 		final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
 
-		opts = ydl_base_opts()
-		opts.update({
-			"format": "bestaudio/best",
-			"outtmpl": f"/tmp/{file_id}.%(ext)s",
-			"postprocessors": [
-				{
-					"key": "FFmpegExtractAudio",
-					"preferredcodec": AUDIO_CODEC,
-					"preferredquality": str(AUDIO_BITRATE_KBPS),
-				},
-				{
-					"key": "FFmpegThumbnailsConvertor",
-					"format": "jpg",
-				},				
-				{
-					"key": "EmbedThumbnail",
-				},
-				{
-					"key": "FFmpegMetadata",
-				},
-			],
-			"postprocessor_args": [
-				"-metadata", f"title={title}",
-				"-metadata", f"artist={info.get('uploader', '')}",
-				"-metadata", "album=YouTube",
-				"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
-				"-metadata", f"encoded_by={BOT_USERNAME}",
-			],
-		})
+		# opts = ydl_base_opts()
+		# opts.update({
+		# 	"format": "bestaudio/best",
+		# 	"outtmpl": f"/tmp/{file_id}.%(ext)s",
+		# 	"postprocessors": [
+		# 		{
+		# 			"key": "FFmpegExtractAudio",
+		# 			"preferredcodec": AUDIO_CODEC,
+		# 			"preferredquality": str(AUDIO_BITRATE_KBPS),
+		# 		},
+		# 		{
+		# 			"key": "FFmpegThumbnailsConvertor",
+		# 			"format": "jpg",
+		# 		},				
+		# 		{
+		# 			"key": "EmbedThumbnail",
+		# 		},
+		# 		{
+		# 			"key": "FFmpegMetadata",
+		# 		},
+		# 	],
+		# 	"postprocessor_args": [
+		# 		"-metadata", f"title={title}",
+		# 		"-metadata", f"artist={info.get('uploader', '')}",
+		# 		"-metadata", "album=YouTube",
+		# 		"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
+		# 		"-metadata", f"encoded_by={BOT_USERNAME}",
+		# 	],
+		# })
 
 		try:
 			await ytdlp_download_with_retry(
