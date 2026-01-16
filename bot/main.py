@@ -273,7 +273,7 @@ async def process_job(job: dict):
 	user = job["user"]
 	url = job["url"]
 	status_msg = job["status_msg"]
-	application = status_msg.get_bot().application
+	application = job["application"]
 
 	info = None
 
@@ -631,6 +631,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		"user": user,
 		"url": url,
 		"status_msg": status_msg,
+		"application": context.application,
 	}
 
 	await download_queue.put(job)
