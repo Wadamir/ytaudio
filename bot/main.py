@@ -49,6 +49,13 @@ DOWNLOAD_WORKERS = 2
 download_queue: asyncio.Queue = asyncio.Queue()
 
 # --------------------------------------------------
+# yt-dlp retry settings
+# --------------------------------------------------
+YTDLP_MAX_RETRIES = 3
+YTDLP_RETRY_DELAY = 7  # seconds
+YTDLP_403_NOTIFY_THRESHOLD = 5
+
+# --------------------------------------------------
 # Environment
 # --------------------------------------------------
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -92,6 +99,9 @@ MAX_TG_AUDIO_EFFECTIVE_MB = MAX_TG_AUDIO_MB - MAX_TG_AUDIO_MARGIN_MB
 MAX_STORAGE_HOURS = 12 			# How long to keep files on disk
 
 LONG_VIDEO_SECONDS = 7200 		# 2 hours
+
+LONG_WARNING_SECONDS = 1800  	# 30 min
+BIG_WARNING_MB = 40 			# 40 MB
 
 # --------------------------------------------------
 # Helpers | utils
@@ -212,6 +222,53 @@ async def download_worker(worker_id: int):
 			download_queue.task_done()
 
 
+async def ytdlp_download_with_retry(
+	url: str,
+	opts: dict,
+	video_id: Optional[str],
+	application,
+):
+	last_error = None
+
+	for attempt in range(1, YTDLP_MAX_RETRIES + 1):
+		try:
+			return await asyncio.to_thread(
+				lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
+			)
+
+		except Exception as e:
+			last_error = e
+			msg = str(e)
+
+			if "403" in msg:
+				logging.warning(f"YouTube 403 (attempt {attempt}/{YTDLP_MAX_RETRIES})")
+
+				# --- log 403 ---
+				from db import log_youtube_error, count_today_youtube_403
+				log_youtube_error("403", url, video_id)
+
+				# --- notify admin if threshold reached ---
+				count = count_today_youtube_403()
+				if count == YTDLP_403_NOTIFY_THRESHOLD:
+					await application.bot.send_message(
+						chat_id=ADMIN_USER_ID,
+						text=(
+							"⚠️ <b>YouTube 403 errors detected</b>\n\n"
+							f"403 errors today: {count}\n"
+							"YouTube may be throttling downloads."
+						),
+						parse_mode="HTML",
+					)
+
+				if attempt < YTDLP_MAX_RETRIES:
+					await asyncio.sleep(YTDLP_RETRY_DELAY)
+					continue
+
+			raise
+
+	raise last_error
+
+
 async def process_job(job: dict):
 	user = job["user"]
 	url = job["url"]
@@ -279,6 +336,13 @@ async def process_job(job: dict):
 		estimated_size = estimate_audio_size_mb(duration, AUDIO_BITRATE_KBPS)
 		estimated_size_mb = round(estimated_size, 2)
 
+		warning_line = ""
+		if duration >= LONG_WARNING_SECONDS:
+			warning_line += "\n\n⏰ This is a long video. Please be patient."
+
+		elif estimated_size >= BIG_WARNING_MB:
+			warning_line += "\n\n⏰ This is a large audio file. Please be patient."
+
 		logging.info(
 			f"Video: {title} | "
 			f"Duration: {duration}s | "
@@ -288,7 +352,7 @@ async def process_job(job: dict):
 
 		# --- Telegram upload possible ---
 		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
-			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB")
+			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB{warning_line}")
 
 			tmp_id = uuid.uuid4().hex
 
@@ -322,8 +386,11 @@ async def process_job(job: dict):
 			})
 
 			try:
-				await asyncio.to_thread(
-					lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
+				await ytdlp_download_with_retry(
+					url=url,
+					opts=opts,
+					video_id=info.get("id"),
+					application=status_msg.get_bot().application,
 				)
 
 				# 🔑 Search for file
@@ -400,12 +467,12 @@ async def process_job(job: dict):
 		if duration >= LONG_VIDEO_SECONDS:
 			await status_msg.edit_text(
 				"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
-				"Please wait, processing may take some time."
+				"⏰ Please wait, processing may take some time."
 			)		
 		else:
 			await status_msg.edit_text(
 				"⚠️ This video is too large for Telegram upload. I can create a download link instead.\n\n"
-				"Please wait, processing may take some time."
+				"⏰ Please wait, processing may take some time."
 			)
 
 		file_id = uuid.uuid4().hex
@@ -442,8 +509,11 @@ async def process_job(job: dict):
 		})
 
 		try:
-			await asyncio.to_thread(
-				lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
+			await ytdlp_download_with_retry(
+				url=url,
+				opts=opts,
+				video_id=info.get("id"),
+				application=status_msg.get_bot().application,
 			)
 
 			tmp_dir = Path("/tmp")
@@ -525,12 +595,14 @@ async def process_job(job: dict):
 		await status_msg.edit_text("❌ An error occurred during processing. Please try again later.")
 
 
+
 # --------------------------------------------------
 # Application lifecycle hooks
 # --------------------------------------------------
 async def post_init(application):
 	for i in range(DOWNLOAD_WORKERS):
 		application.create_task(download_worker(i + 1))
+
 
 
 # --------------------------------------------------
@@ -577,6 +649,7 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	)
 
 
+
 # --------------------------------------------------
 # App bootstrap
 # --------------------------------------------------
@@ -598,6 +671,7 @@ def main():
 
 	logging.info("Bot started")
 	app.run_polling()
+
 
 
 if __name__ == "__main__":

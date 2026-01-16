@@ -72,6 +72,19 @@ def init_db():
 				FOREIGN KEY (user_id) REFERENCES users(user_id)
 			)
 		""")
+		
+		# --- youtube_errors ---
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS youtube_errors (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+				error_type TEXT NOT NULL,
+				video_url TEXT,
+				video_id TEXT,
+
+				created_at TEXT NOT NULL
+			)
+		""")
 
 		conn.commit()
 
@@ -128,6 +141,15 @@ def register_user(user) -> None:
 		conn.commit()
 
 
+def get_total_users() -> int:
+	with get_conn() as conn:
+		cur = conn.execute("SELECT COUNT(*) FROM users")
+		return cur.fetchone()[0]
+
+
+# --------------------------------------------------
+# Downloads
+# --------------------------------------------------
 def increment_downloads(user_id: int) -> None:
 	now = datetime.utcnow().isoformat()
 
@@ -142,15 +164,6 @@ def increment_downloads(user_id: int) -> None:
 		conn.commit()
 
 
-def get_total_users() -> int:
-	with get_conn() as conn:
-		cur = conn.execute("SELECT COUNT(*) FROM users")
-		return cur.fetchone()[0]
-
-
-# --------------------------------------------------
-# Downloads
-# --------------------------------------------------
 def log_download(
 	user_id: int,
 	video_url: str,
@@ -208,3 +221,43 @@ def log_download(
 			datetime.utcnow().isoformat(),
 		))
 		conn.commit()
+
+
+# --------------------------------------------------
+# Errors
+# --------------------------------------------------
+def log_youtube_error(
+	error_type: str,
+	video_url: Optional[str] = None,
+	video_id: Optional[str] = None,
+) -> None:
+	with get_conn() as conn:
+		conn.execute("""
+			INSERT INTO youtube_errors (
+				error_type,
+				video_url,
+				video_id,
+				created_at
+			)
+			VALUES (?, ?, ?, ?)
+		""", (
+			error_type,
+			video_url,
+			video_id,
+			datetime.utcnow().isoformat(),
+		))
+		conn.commit()
+
+
+def count_today_youtube_403() -> int:
+	today = datetime.utcnow().date().isoformat()
+
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM youtube_errors
+			WHERE error_type = '403'
+			AND DATE(created_at) = ?
+		""", (today,))
+		return cur.fetchone()[0]
+
