@@ -274,9 +274,11 @@ def ydl_slow_audio_opts(tmp_id: str, title: str, uploader: str):
 			},
 		],
 		"postprocessor_args": [
-			"-threads", "1",
 			"-metadata", f"title={title}",
 			"-metadata", f"artist={uploader}",
+			"-metadata", "album=YouTube",
+			"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
+			"-metadata", f"encoded_by={BOT_USERNAME}",
 		],
 	}
 
@@ -431,6 +433,13 @@ async def process_job(job: dict):
 		estimated_size = estimate_audio_size_mb(duration, AUDIO_BITRATE_KBPS)
 		estimated_size_mb = round(estimated_size, 2)
 
+		logging.info(
+			f"Video: {title} | "
+			f"Duration: {duration}s | "
+			f"Estimated size: {estimated_size_mb:.1f} MB"
+		)
+
+
 		warning_line = ""
 		if duration >= LONG_WARNING_SECONDS:
 			warning_line += "\n\n⏰ This is a long video. Please be patient."
@@ -438,12 +447,11 @@ async def process_job(job: dict):
 		elif estimated_size >= BIG_WARNING_MB:
 			warning_line += "\n\n⏰ This is a large audio file. Please be patient."
 
-		logging.info(
-			f"Video: {title} | "
-			f"Duration: {duration}s | "
-			f"Estimated size: {estimated_size_mb:.1f} MB"
-		)
+		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
+			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB{warning_line}")		
 
+		tmp_id = uuid.uuid4().hex
+		tmp_dir = Path("/tmp")
 
 		use_fast_path = can_use_fast_path(info, MAX_TG_AUDIO_EFFECTIVE_MB)
 
@@ -455,61 +463,46 @@ async def process_job(job: dict):
 			opts = ydl_slow_audio_opts(tmp_id, title, info.get("uploader", ""))
 
 
+		# --- Download audio ---
+		try:
+			await ytdlp_download_with_retry(
+				url=url,
+				opts=opts,
+				video_id=info.get("id"),
+				application=application,
+			)
+
+			files = list(tmp_dir.glob(f"{tmp_id}.*"))
+			if not files:
+				raise RuntimeError("Downloaded audio file not found")
+			
+			tmp_path = files[0]
+
+			real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
+			logging.info(f"Real size: {real_size_mb:.1f} MB")
+
+		except Exception as e:
+			logging.exception("Audio download failed")
+			await status_msg.edit_text("❌ Failed to download audio.")
+
+			log_download(
+				user_id=user.id,
+				video_url=url,
+				video_id=info.get("id") if info else None,
+				video_title=title if "title" in locals() else None,
+				duration_seconds=duration if "duration" in locals() else None,
+				chosen_bitrate=AUDIO_BITRATE_KBPS,
+				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+				real_size_mb=None,
+				delivery_method="failed",
+				status="failed",
+				error_message=str(e),
+			)
+			return	
+
 		# --- Telegram upload possible ---
-		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
-			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB{warning_line}")
-
-			tmp_id = uuid.uuid4().hex
-
-			# opts = ydl_base_opts()
-			# opts.update({
-			# 	"format": "bestaudio/best",
-			# 	"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
-			# 	"postprocessors": [
-			# 		{
-			# 			"key": "FFmpegExtractAudio",
-			# 			"preferredcodec": AUDIO_CODEC,
-			# 			"preferredquality": str(AUDIO_BITRATE_KBPS),
-			# 		},
-			# 		{
-			# 			"key": "FFmpegThumbnailsConvertor",
-			# 			"format": "jpg",
-			# 		},					
-			# 		{
-			# 			"key": "EmbedThumbnail",
-			# 		},
-			# 		{
-			# 			"key": "FFmpegMetadata",
-			# 		},
-			# 	],
-			# 	"postprocessor_args": [
-			# 		"-metadata", f"title={title}",
-			# 		"-metadata", f"artist={info.get('uploader', '')}",
-			# 		"-metadata", "album=YouTube",
-			# 		"-metadata", "comment=Downloaded via YouTube Audio Downloader @ytaudio_down_bot",
-			# 	],
-			# })
-
+		if real_size_mb <= MAX_TG_AUDIO_EFFECTIVE_MB:
 			try:
-				await ytdlp_download_with_retry(
-					url=url,
-					opts=opts,
-					video_id=info.get("id"),
-					application=application,
-				)
-
-				# 🔑 Search for file
-				tmp_dir = Path("/tmp")
-				files = list(tmp_dir.glob(f"{tmp_id}.*"))
-
-				if not files:
-					raise RuntimeError("Downloaded audio file not found")
-				
-				tmp_path = files[0]
-
-				real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024, 2)
-				logging.info(f"Real size: {real_size_mb:.1f} MB")
-
 				thumb_url = info.get("thumbnail")
 				if thumb_url:
 					# --- Send thumbnail ---
@@ -568,7 +561,8 @@ async def process_job(job: dict):
 				
 			return
 		
-		# --- Fallback: download link ---
+
+		# --- Create download link ---
 		if duration >= LONG_VIDEO_SECONDS:
 			await status_msg.edit_text(
 				"⚠️ This video is longer than 2 hours. I will create a download link instead.\n\n"
@@ -580,64 +574,16 @@ async def process_job(job: dict):
 				"⏰ Please wait, processing may take some time."
 			)
 
-		file_id = uuid.uuid4().hex
-		final_path = STORAGE_DIR / f"{file_id}.{AUDIO_CONTAINER}"
-
-		# opts = ydl_base_opts()
-		# opts.update({
-		# 	"format": "bestaudio/best",
-		# 	"outtmpl": f"/tmp/{file_id}.%(ext)s",
-		# 	"postprocessors": [
-		# 		{
-		# 			"key": "FFmpegExtractAudio",
-		# 			"preferredcodec": AUDIO_CODEC,
-		# 			"preferredquality": str(AUDIO_BITRATE_KBPS),
-		# 		},
-		# 		{
-		# 			"key": "FFmpegThumbnailsConvertor",
-		# 			"format": "jpg",
-		# 		},				
-		# 		{
-		# 			"key": "EmbedThumbnail",
-		# 		},
-		# 		{
-		# 			"key": "FFmpegMetadata",
-		# 		},
-		# 	],
-		# 	"postprocessor_args": [
-		# 		"-metadata", f"title={title}",
-		# 		"-metadata", f"artist={info.get('uploader', '')}",
-		# 		"-metadata", "album=YouTube",
-		# 		"-metadata", f"comment={BOT_CAPTION} {BOT_USERNAME}",
-		# 		"-metadata", f"encoded_by={BOT_USERNAME}",
-		# 	],
-		# })
-
+		# --- Move file to storage ---
+		final_path = STORAGE_DIR / f"{tmp_id}.{AUDIO_CONTAINER}"
 		try:
-			await ytdlp_download_with_retry(
-				url=url,
-				opts=opts,
-				video_id=info.get("id"),
-				application=application,
-			)
-
-			tmp_dir = Path("/tmp")
-			files = list(tmp_dir.glob(f"{file_id}.*"))
-
-			if not files:
-				raise RuntimeError("Downloaded audio file not found")
-
-			tmp_path = files[0]
 			shutil.move(str(tmp_path), str(final_path))
-
-			size_mb = round((final_path.stat().st_size / 1024 / 1024), 2)
 
 			link = f"{BASE_URL}/audio/{final_path.name}"
 			filename_download = build_audio_filename(info)
 
 			logging.info(
 				f"File saved: {final_path.name} | "
-				f"Real size: {size_mb:.1f} MB | "
 				f"Link: {link} | "
 				f"Filename: {filename_download}"
 			)
@@ -664,12 +610,11 @@ async def process_job(job: dict):
 				duration_seconds=duration,
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb,
-				real_size_mb=size_mb,
+				real_size_mb=real_size_mb,
 				delivery_method="link",
 				status="success",
 				file_path=str(final_path),
-				download_url=link,
-				fallback_reason="too_large",
+				download_url=link
 			)
 
 		except Exception as e:
