@@ -205,19 +205,15 @@ def extract_http_error_code(error: Exception) -> str | None:
 
 
 def can_use_fast_path(info: dict, max_size_mb: float) -> bool:
-	formats = info.get("formats", [])
-	duration = info.get("duration", 0)
+	for f in info.get("formats", []):
+		if f.get("ext") != "m4a":
+			continue
+		if f.get("acodec") != "mp4a.40.2":
+			continue
 
-	for f in formats:
-		if (
-			f.get("ext") == "m4a"
-			and f.get("acodec") == "mp4a.40.2"
-			and f.get("abr")  # audio bitrate known
-		):
-			abr = f["abr"]
-			estimated = estimate_audio_size_mb(duration, abr)
-			if estimated <= max_size_mb:
-				return True
+		size = f.get("filesize") or f.get("filesize_approx")
+		if size and (size / 1024 / 1024) <= max_size_mb:
+			return True
 
 	return False
 
@@ -248,13 +244,7 @@ def ydl_fast_audio_opts(tmp_id: str):
 		**ydl_base_opts(),
 		"format": "bestaudio[ext=m4a]/bestaudio",
 		"outtmpl": f"/tmp/{tmp_id}.%(ext)s",
-
-		# ❌ no audio postprocessors
-		"postprocessors": [
-			{
-				"key": "FFmpegMetadata",
-			},
-		],
+		"postprocessors": [], 						# ❌ no audio postprocessors
 	}
 
 
@@ -440,15 +430,15 @@ async def process_job(job: dict):
 		)
 
 
-		warning_line = ""
+		warning_line = "\n\n⏰ Please be patient."
 		if duration >= LONG_WARNING_SECONDS:
-			warning_line += "\n\n⏰ This is a long video. Please be patient."
+			warning_line = "\n\n⏰ This is a long video. Please be patient."
 
 		elif estimated_size >= BIG_WARNING_MB:
-			warning_line += "\n\n⏰ This is a large audio file. Please be patient."
+			warning_line = "\n\n⏰ This is a large audio file. Please be patient."
 
-		if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
-			await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB{warning_line}")		
+		# if estimated_size <= MAX_TG_AUDIO_EFFECTIVE_MB:
+		# 	await status_msg.edit_text(f"⬇️ Downloading audio ≈ {estimated_size_mb:.1f} MB{warning_line}")		
 
 		tmp_id = uuid.uuid4().hex
 		tmp_dir = Path("/tmp")
@@ -459,7 +449,7 @@ async def process_job(job: dict):
 			await status_msg.edit_text("⚡ Downloading audio (fast mode)")
 			opts = ydl_fast_audio_opts(tmp_id)
 		else:
-			await status_msg.edit_text("⬇️ Downloading audio (re-encoding)")
+			await status_msg.edit_text(f"⬇️ Downloading audio (re-encoding) {estimated_size_mb:.1f} MB{warning_line}")
 			opts = ydl_slow_audio_opts(tmp_id, title, info.get("uploader", ""))
 
 
@@ -503,6 +493,7 @@ async def process_job(job: dict):
 		# --- Telegram upload possible ---
 		if real_size_mb <= MAX_TG_AUDIO_EFFECTIVE_MB:
 			try:
+				thumb_msg = None
 				thumb_url = info.get("thumbnail")
 				if thumb_url:
 					# --- Send thumbnail ---
