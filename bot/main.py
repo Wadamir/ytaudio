@@ -273,7 +273,7 @@ async def process_job(job: dict):
 	user = job["user"]
 	url = job["url"]
 	status_msg = job["status_msg"]
-	application = job["application"]
+	application = status_msg.get_bot().application
 
 	info = None
 
@@ -602,7 +602,7 @@ async def process_job(job: dict):
 # --------------------------------------------------
 async def post_init(application):
 	for i in range(DOWNLOAD_WORKERS):
-		application.create_task(download_worker(i + 1))
+		asyncio.create_task(download_worker(i + 1))
 
 
 
