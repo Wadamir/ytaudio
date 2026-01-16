@@ -273,6 +273,7 @@ async def process_job(job: dict):
 	user = job["user"]
 	url = job["url"]
 	status_msg = job["status_msg"]
+	application = job["application"]
 
 	info = None
 
@@ -390,7 +391,7 @@ async def process_job(job: dict):
 					url=url,
 					opts=opts,
 					video_id=info.get("id"),
-					application=status_msg.get_bot().application,
+					application=application,
 				)
 
 				# 🔑 Search for file
@@ -513,7 +514,7 @@ async def process_job(job: dict):
 				url=url,
 				opts=opts,
 				video_id=info.get("id"),
-				application=status_msg.get_bot().application,
+				application=application,
 			)
 
 			tmp_dir = Path("/tmp")
