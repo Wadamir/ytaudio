@@ -5,6 +5,7 @@ import time
 import shutil
 import re
 import asyncio
+import random
 
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -51,10 +52,13 @@ download_queue: asyncio.Queue = asyncio.Queue()
 # --------------------------------------------------
 # yt-dlp retry settings
 # --------------------------------------------------
-YTDLP_MAX_RETRIES = 3
-YTDLP_RETRY_DELAY = 7  # seconds
-YTDLP_403_NOTIFY_THRESHOLD = 5
+YTDLP_MAX_RETRIES = 3			# total attempts
 
+YTDLP_BACKOFF_BASE = 5        	# starting delay
+YTDLP_BACKOFF_MULTIPLIER = 3	# exponential factor
+YTDLP_BACKOFF_MAX = 60        	# max delay
+
+YTDLP_NOTIFY_THRESHOLD = 5		# notify admin on errors
 # --------------------------------------------------
 # Environment
 # --------------------------------------------------
@@ -185,6 +189,22 @@ def build_audio_filename(info: dict) -> str:
 	return safe_filename(filename)
 
 
+def extract_http_error_code(error: Exception) -> str | None:
+	msg = str(error)
+
+	if "403" in msg:
+		return "403"
+	if "429" in msg:
+		return "429"
+	if "404" in msg:
+		return "404"
+	if "500" in msg:
+		return "500"
+
+	return None
+
+
+
 # --------------------------------------------------
 # yt-dlp base options
 # --------------------------------------------------
@@ -222,10 +242,18 @@ async def download_worker(worker_id: int):
 			download_queue.task_done()
 
 
+def calc_backoff_with_jitter(attempt: int) -> int:
+	max_delay = YTDLP_BACKOFF_BASE * (YTDLP_BACKOFF_MULTIPLIER ** (attempt - 1))
+	max_delay = min(max_delay, YTDLP_BACKOFF_MAX)
+
+	# Full jitter: random delay from 0 to max_delay
+	return random.randint(0, max_delay)
+
+
 async def ytdlp_download_with_retry(
 	url: str,
 	opts: dict,
-	video_id: Optional[str],
+	video_id: str | None,
 	application,
 ):
 	last_error = None
@@ -238,32 +266,41 @@ async def ytdlp_download_with_retry(
 
 		except Exception as e:
 			last_error = e
-			msg = str(e)
+			error_code = extract_http_error_code(e)
 
-			if "403" in msg:
-				logging.warning(f"YouTube 403 (attempt {attempt}/{YTDLP_MAX_RETRIES})")
+			# --- retry only for temporary errors ---
+			if error_code in ("403", "429"):
+				delay = calc_backoff_with_jitter(attempt)
 
-				# --- log 403 ---
-				from db import log_youtube_error, count_today_youtube_403
-				log_youtube_error("403", url, video_id)
+				logging.warning(
+					f"YouTube HTTP {error_code} | "
+					f"attempt {attempt}/{YTDLP_MAX_RETRIES} | "
+					f"retry in {delay}s"
+				)
 
-				# --- notify admin if threshold reached ---
-				count = count_today_youtube_403()
-				if count == YTDLP_403_NOTIFY_THRESHOLD:
+				# --- log REAL error code ---
+				from db import log_youtube_error, count_today_youtube_errors
+				log_youtube_error(error_code, url, video_id)
+
+				# --- notify admin once per threshold ---
+				count = count_today_youtube_errors(error_code)
+				if count == YTDLP_NOTIFY_THRESHOLD:
 					await application.bot.send_message(
 						chat_id=ADMIN_USER_ID,
 						text=(
-							"⚠️ <b>YouTube 403 errors detected</b>\n\n"
-							f"403 errors today: {count}\n"
+							"⚠️ <b>YouTube temporary errors detected</b>\n\n"
+							f"HTTP {error_code} errors today: {count}\n"
 							"YouTube may be throttling downloads."
 						),
 						parse_mode="HTML",
 					)
 
 				if attempt < YTDLP_MAX_RETRIES:
-					await asyncio.sleep(YTDLP_RETRY_DELAY)
+					if delay > 0:
+						await asyncio.sleep(delay)
 					continue
 
+			# --- fatal or retries exhausted ---
 			raise
 
 	raise last_error

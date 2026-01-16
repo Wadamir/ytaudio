@@ -1,7 +1,7 @@
 import sqlite3
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
+from datetime import datetime, timezone
 
 DB_PATH = Path("/storage/db/bot.sqlite3")
 
@@ -12,6 +12,15 @@ DB_PATH = Path("/storage/db/bot.sqlite3")
 def get_conn():
 	DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 	return sqlite3.connect(DB_PATH)
+
+
+
+# --------------------------------------------------
+# Helpers
+# --------------------------------------------------
+def utc_now_iso() -> str:
+	return datetime.now(timezone.utc).isoformat()
+
 
 
 # --------------------------------------------------
@@ -86,14 +95,21 @@ def init_db():
 			)
 		""")
 
+		# --- Indexes ---
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_youtube_errors_type_date
+			ON youtube_errors (error_type, created_at)
+		""")
+
 		conn.commit()
+
 
 
 # --------------------------------------------------
 # Users
 # --------------------------------------------------
 def register_user(user) -> None:
-	now = datetime.utcnow().isoformat()
+	now = utc_now_iso()
 
 	with get_conn() as conn:
 		cur = conn.execute(
@@ -145,13 +161,45 @@ def get_total_users() -> int:
 	with get_conn() as conn:
 		cur = conn.execute("SELECT COUNT(*) FROM users")
 		return cur.fetchone()[0]
+	
+
+def get_users() -> list[dict]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				user_id,
+				username,
+				first_name,
+				last_name,
+				first_seen,
+				last_seen,
+				downloads_count,
+				last_video_at
+			FROM users
+		""")
+		rows = cur.fetchall()
+
+		users = []
+		for row in rows:
+			users.append({
+				"user_id": row[0],
+				"username": row[1],
+				"first_name": row[2],
+				"last_name": row[3],
+				"first_seen": row[4],
+				"last_seen": row[5],
+				"downloads_count": row[6],
+				"last_video_at": row[7],
+			})
+		return users
+
 
 
 # --------------------------------------------------
 # Downloads
 # --------------------------------------------------
 def increment_downloads(user_id: int) -> None:
-	now = datetime.utcnow().isoformat()
+	now = utc_now_iso()
 
 	with get_conn() as conn:
 		conn.execute("""
@@ -218,9 +266,10 @@ def log_download(
 			fallback_reason,
 			status,
 			error_message,
-			datetime.utcnow().isoformat(),
+			utc_now_iso(),
 		))
 		conn.commit()
+
 
 
 # --------------------------------------------------
@@ -244,20 +293,48 @@ def log_youtube_error(
 			error_type,
 			video_url,
 			video_id,
-			datetime.utcnow().isoformat(),
+			utc_now_iso()
 		))
 		conn.commit()
 
 
-def count_today_youtube_403() -> int:
-	today = datetime.utcnow().date().isoformat()
+def get_today_youtube_errors(error_type: str) -> list[dict]:
+	today = datetime.now(timezone.utc).date().isoformat()
+
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				id,
+				error_type,
+				video_url,
+				video_id,
+				created_at
+			FROM youtube_errors
+			WHERE error_type = ?
+			AND DATE(created_at) = ?
+		""", (error_type, today))
+		rows = cur.fetchall()
+
+		errors = []
+		for row in rows:
+			errors.append({
+				"id": row[0],
+				"error_type": row[1],
+				"video_url": row[2],
+				"video_id": row[3],
+				"created_at": row[4],
+			})
+		return errors
+
+
+def count_today_youtube_errors(error_type: str) -> int:
+	today = datetime.now(timezone.utc).date().isoformat()
 
 	with get_conn() as conn:
 		cur = conn.execute("""
 			SELECT COUNT(*)
 			FROM youtube_errors
-			WHERE error_type = '403'
+			WHERE error_type = ?
 			AND DATE(created_at) = ?
-		""", (today,))
+		""", (error_type, today))
 		return cur.fetchone()[0]
-
