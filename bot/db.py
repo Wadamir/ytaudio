@@ -11,7 +11,9 @@ DB_PATH = Path("/storage/db/bot.sqlite3")
 # --------------------------------------------------
 def get_conn():
 	DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-	return sqlite3.connect(DB_PATH)
+	conn = sqlite3.connect(DB_PATH)
+	conn.execute("PRAGMA foreign_keys = ON;")
+	return conn
 
 
 
@@ -22,6 +24,8 @@ def utc_now_iso() -> str:
 	return datetime.now(timezone.utc).isoformat()
 
 
+def utc_today_iso() -> str:
+	return datetime.now(timezone.utc).date().isoformat()
 
 # --------------------------------------------------
 # Init DB
@@ -62,6 +66,10 @@ def init_db():
 				estimated_size_mb REAL,
 				real_size_mb REAL,
 
+				processing_mode TEXT,
+				-- fast | slow
+				processing_time_ms INTEGER,
+
 				delivery_method TEXT NOT NULL,
 				-- telegram | link | failed
 
@@ -100,6 +108,30 @@ def init_db():
 			CREATE INDEX IF NOT EXISTS idx_youtube_errors_type_date
 			ON youtube_errors (error_type, created_at)
 		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_downloads_created_at
+			ON downloads (created_at)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_downloads_user_id
+			ON downloads (user_id)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_downloads_status
+			ON downloads (status)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_users_first_seen
+			ON users (first_seen)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_users_last_seen
+			ON users (last_seen)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_users_downloads_count
+			ON users (downloads_count)
+		""")
 
 		conn.commit()
 
@@ -116,7 +148,6 @@ def register_user(user) -> None:
 			"SELECT user_id FROM users WHERE user_id = ?",
 			(user.id,)
 		)
-
 		if cur.fetchone() is None:
 			conn.execute("""
 				INSERT INTO users (
@@ -153,7 +184,6 @@ def register_user(user) -> None:
 				now,
 				user.id,
 			))
-
 		conn.commit()
 
 
@@ -161,7 +191,7 @@ def get_total_users() -> int:
 	with get_conn() as conn:
 		cur = conn.execute("SELECT COUNT(*) FROM users")
 		return cur.fetchone()[0]
-	
+
 
 def get_users() -> list[dict]:
 	with get_conn() as conn:
@@ -178,7 +208,6 @@ def get_users() -> list[dict]:
 			FROM users
 		""")
 		rows = cur.fetchall()
-
 		users = []
 		for row in rows:
 			users.append({
@@ -194,6 +223,52 @@ def get_users() -> list[dict]:
 		return users
 
 
+def get_total_new_users_today() -> int:
+	now = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM users
+			WHERE DATE(first_seen) = ?
+		""", (now,))
+		return cur.fetchone()[0]
+	
+
+def get_total_users_week() -> int:
+	now = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM users
+			WHERE DATE(first_seen) >= DATE(?, '-7 days')
+		""", (now,))
+		return cur.fetchone()[0]
+
+
+def get_top_users(limit: int = 10) -> list[dict]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				user_id,
+				username,
+				first_name,
+				last_name,
+				downloads_count
+			FROM users
+			ORDER BY downloads_count DESC
+			LIMIT ?
+		""", (limit,))
+		rows = cur.fetchall()
+		users = []
+		for row in rows:
+			users.append({
+				"user_id": row[0],
+				"username": row[1],
+				"first_name": row[2],
+				"last_name": row[3],
+				"downloads_count": row[4],
+			})
+		return users
 
 # --------------------------------------------------
 # Downloads
@@ -214,21 +289,29 @@ def increment_downloads(user_id: int) -> None:
 
 def log_download(
 	user_id: int,
+
 	video_url: str,
 	video_id: Optional[str],
 	video_title: Optional[str],
+
 	duration_seconds: Optional[int],
 
 	chosen_bitrate: Optional[int],
 	estimated_size_mb: Optional[float],
 	real_size_mb: Optional[float],
 
+	processing_mode: Optional[str],
+	processing_time_ms: Optional[int],
+
 	delivery_method: str,
+
 	status: str,
 
 	file_path: Optional[str] = None,
 	download_url: Optional[str] = None,
+
 	fallback_reason: Optional[str] = None,
+
 	error_message: Optional[str] = None,
 ) -> None:
 	with get_conn() as conn:
@@ -242,15 +325,17 @@ def log_download(
 				chosen_bitrate,
 				estimated_size_mb,
 				real_size_mb,
+				processing_mode,
+				processing_time_ms,
 				delivery_method,
+				status,
 				file_path,
 				download_url,
 				fallback_reason,
-				status,
 				error_message,
 				created_at
 			)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		""", (
 			user_id,
 			video_url,
@@ -260,16 +345,151 @@ def log_download(
 			chosen_bitrate,
 			estimated_size_mb,
 			real_size_mb,
+			processing_mode,
+			processing_time_ms,
 			delivery_method,
+			status,
 			file_path,
 			download_url,
 			fallback_reason,
-			status,
 			error_message,
 			utc_now_iso(),
 		))
 		conn.commit()
 
+
+def get_total_downloads(success_only: bool = True) -> int:
+	with get_conn() as conn:
+		if success_only:
+			cur = conn.execute("SELECT COUNT(*) FROM downloads WHERE status = 'success'")
+		else:
+			cur = conn.execute("SELECT COUNT(*) FROM downloads")
+		return cur.fetchone()[0]
+	
+
+def get_total_downloads_today() -> int:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM downloads
+			WHERE DATE(created_at) = ?
+		""", (utc_today_iso(),))
+		return cur.fetchone()[0]
+	
+
+def get_total_downloads_week() -> int:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM downloads
+			WHERE DATE(created_at) >= DATE(?, '-7 days')
+		""", (utc_today_iso(),))
+		return cur.fetchone()[0]
+	
+
+def get_downloads_per_user(user_id: int) -> int:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM downloads
+			WHERE user_id = ?
+		""", (user_id,))
+		return cur.fetchone()[0]
+	
+
+def get_downloads_by_delivery_methods() -> dict[str, int]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				delivery_method,
+				COUNT(*) as count
+			FROM downloads
+			GROUP BY delivery_method
+		""")
+		rows = cur.fetchall()
+		methods = {}
+		for row in rows:
+			methods[row[0]] = row[1]
+		return methods	
+
+
+def get_failure_rate() -> Optional[float]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+				COUNT(*) as total_count
+			FROM downloads
+		""")
+		row = cur.fetchone()
+		failed_count = row[0]
+		total_count = row[1]
+
+		if total_count == 0:
+			return None
+		else:
+			return (failed_count / total_count) * 100.0
+
+# --------------------------------------------------
+# System stats
+# --------------------------------------------------
+def get_avg_duration_seconds() -> Optional[float]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT AVG(duration_seconds)
+			FROM downloads
+			WHERE status = 'success' 
+			AND duration_seconds IS NOT NULL
+		""")
+		result = cur.fetchone()[0]
+		return result if result is not None else None
+
+
+def get_avg_real_size() -> Optional[float]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT AVG(real_size_mb)
+			FROM downloads
+			WHERE real_size_mb IS NOT NULL
+		""")
+		result = cur.fetchone()[0]
+		return result if result is not None else None		
+	
+def get_avg_processing_time() -> Optional[float]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT AVG(processing_time_ms)
+			FROM downloads
+			WHERE status = 'success' 
+			AND processing_time_ms IS NOT NULL
+		""")
+		result = cur.fetchone()[0]
+		return result if result is not None else None
+	
+def get_latency_stats() -> dict[str, Optional[float]]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				processing_mode,
+				COUNT(*) AS cnt,
+				AVG(processing_time_ms) AS avg_ms
+			FROM downloads
+			WHERE status = 'success'
+			AND processing_mode IS NOT NULL
+			AND processing_time_ms IS NOT NULL
+			GROUP BY processing_mode;
+		""")
+		rows = cur.fetchall()
+		stats = {}
+		for row in rows:
+			mode = row[0]
+			count = row[1]
+			avg_ms = row[2]
+			stats[mode] = {
+				"count": count,
+				"avg_processing_time_ms": avg_ms
+			}
+		return stats
 
 
 # --------------------------------------------------
@@ -295,11 +515,11 @@ def log_youtube_error(
 			video_id,
 			utc_now_iso()
 		))
-		conn.commit()
+		conn.commit()	
 
 
-def get_today_youtube_errors(error_type: str) -> list[dict]:
-	today = datetime.now(timezone.utc).date().isoformat()
+def get_youtube_errors_today(error_type: str) -> list[dict]:
+	today = utc_today_iso()
 
 	with get_conn() as conn:
 		cur = conn.execute("""
@@ -327,14 +547,35 @@ def get_today_youtube_errors(error_type: str) -> list[dict]:
 		return errors
 
 
-def count_today_youtube_errors(error_type: str) -> int:
-	today = datetime.now(timezone.utc).date().isoformat()
+def get_total_youtube_errors() -> int:
+	with get_conn() as conn:
+		cur = conn.execute("SELECT COUNT(*) FROM youtube_errors")
+		return cur.fetchone()[0]	
+
+
+def get_total_youtube_errors_today() -> int:
+	today = utc_today_iso()
 
 	with get_conn() as conn:
 		cur = conn.execute("""
 			SELECT COUNT(*)
 			FROM youtube_errors
-			WHERE error_type = ?
-			AND DATE(created_at) = ?
-		""", (error_type, today))
+			WHERE DATE(created_at) = ?
+		""", (today,))
 		return cur.fetchone()[0]
+
+
+def get_youtube_errors_by_type() -> dict[str, int]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				error_type,
+				COUNT(*) as count
+			FROM youtube_errors
+			GROUP BY error_type
+		""")
+		rows = cur.fetchall()
+		errors = {}
+		for row in rows:
+			errors[row[0]] = row[1]
+		return errors

@@ -356,6 +356,9 @@ async def ytdlp_download_with_retry(
 
 
 async def process_job(job: dict):
+	processing_mode: Optional[str] = None
+	start_ts = time.monotonic()
+
 	user = job["user"]
 	url = job["url"]
 	status_msg = job["status_msg"]
@@ -381,16 +384,26 @@ async def process_job(job: dict):
 
 			log_download(
 				user_id=user.id,
+
 				video_url=url,
 				video_id=None,
 				video_title=None,
+
 				duration_seconds=None,
+
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=None,
 				real_size_mb=None,
+
+				processing_mode=processing_mode,
+				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 				delivery_method="failed",
+
 				status="failed",
+
 				error_message=str(e),
+				fallback_reason="metadata_extraction_failed",
 			)
 			return
 
@@ -405,16 +418,26 @@ async def process_job(job: dict):
 
 			log_download(
 				user_id=user.id,
+
 				video_url=url,
 				video_id=info.get("id") if info else None,
 				video_title=title if "title" in locals() else None,
+
 				duration_seconds=duration if "duration" in locals() else None,
+
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
 				real_size_mb=None,
+
+				processing_mode=processing_mode,
+				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 				delivery_method="failed",
+
 				status="failed",
+
 				error_message="Unknown video duration",
+				fallback_reason="unknown_duration",
 			)
 
 			return
@@ -446,9 +469,11 @@ async def process_job(job: dict):
 		use_fast_path = can_use_fast_path(info, MAX_TG_AUDIO_EFFECTIVE_MB)
 
 		if use_fast_path:
+			processing_mode = "fast"
 			await status_msg.edit_text("⚡ Downloading audio (fast mode)")
 			opts = ydl_fast_audio_opts(tmp_id)
 		else:
+			processing_mode = "slow"
 			await status_msg.edit_text(f"⬇️ Downloading audio (re-encoding) {estimated_size_mb:.1f} MB{warning_line}")
 			opts = ydl_slow_audio_opts(tmp_id, title, info.get("uploader", ""))
 
@@ -477,16 +502,26 @@ async def process_job(job: dict):
 
 			log_download(
 				user_id=user.id,
+
 				video_url=url,
 				video_id=info.get("id") if info else None,
 				video_title=title if "title" in locals() else None,
+
 				duration_seconds=duration if "duration" in locals() else None,
+
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 				real_size_mb=None,
+
+				processing_mode=processing_mode,
+				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 				delivery_method="failed",
+
 				status="failed",
+
 				error_message=str(e),
+				fallback_reason="download_failed",
 			)
 			return	
 
@@ -518,14 +553,22 @@ async def process_job(job: dict):
 				increment_downloads(user.id)
 				log_download(
 					user_id=user.id,
+
 					video_url=url,
 					video_id=info.get("id"),
 					video_title=title,
+
 					duration_seconds=duration,
+
 					chosen_bitrate=AUDIO_BITRATE_KBPS,
 					estimated_size_mb=estimated_size_mb,
 					real_size_mb=real_size_mb,
+
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 					delivery_method="telegram",
+
 					status="success",
 				)
 
@@ -534,16 +577,26 @@ async def process_job(job: dict):
 				await status_msg.edit_text("❌ Failed to send audio.")
 				log_download(
 					user_id=user.id,
+
 					video_url=url,
 					video_id=info.get("id") if info else None,
 					video_title=title if "title" in locals() else None,
+
 					duration_seconds=duration if "duration" in locals() else None,
+
 					chosen_bitrate=AUDIO_BITRATE_KBPS,
 					estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 					real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
+
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 					delivery_method="failed",
+
 					status="failed",
+
 					error_message=str(e),
+					fallback_reason="telegram_upload_failed",
 				)	
 
 			finally:
@@ -595,15 +648,24 @@ async def process_job(job: dict):
 			increment_downloads(user.id)
 			log_download(
 				user_id=user.id,
+
 				video_url=url,
 				video_id=info.get("id"),
 				video_title=title,
+
 				duration_seconds=duration,
+
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb,
 				real_size_mb=real_size_mb,
+
+				processing_mode=processing_mode,
+				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 				delivery_method="link",
+
 				status="success",
+
 				file_path=str(final_path),
 				download_url=link
 			)
@@ -614,16 +676,26 @@ async def process_job(job: dict):
 
 			log_download(
 				user_id=user.id,
+
 				video_url=url,
 				video_id=info.get("id") if info else None,
 				video_title=title if "title" in locals() else None,
+
 				duration_seconds=duration if "duration" in locals() else None,
+
 				chosen_bitrate=AUDIO_BITRATE_KBPS,
 				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
 				real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
+
+				processing_mode=processing_mode,
+				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
 				delivery_method="failed",
+
 				status="failed",
+
 				error_message=str(e),
+				fallback_reason="link_generation_failed",
 			)
 
 		finally:
@@ -634,6 +706,30 @@ async def process_job(job: dict):
 	except Exception as e:
 		logging.exception("Download worker failed")
 		await status_msg.edit_text("❌ An error occurred during processing. Please try again later.")
+
+		log_download(
+			user_id=user.id,
+
+			video_url=url,
+			video_id=info.get("id") if info else None,
+			video_title=title if "title" in locals() else None,
+
+			duration_seconds=duration if "duration" in locals() else None,
+
+			chosen_bitrate=AUDIO_BITRATE_KBPS,
+			estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+			real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
+
+			processing_mode=processing_mode,
+			processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
+			delivery_method="failed",
+
+			status="failed",
+
+			error_message=str(e),
+			fallback_reason="worker_failed",
+		)
 
 
 
