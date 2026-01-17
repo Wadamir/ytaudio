@@ -28,6 +28,24 @@ from db import (
 	increment_downloads,
 	log_download,
 	get_total_users,
+	#--- Stats ---
+	get_total_users,
+	get_total_new_users_today,
+	get_total_users_week,
+	get_top_users,
+
+	get_total_downloads,
+	get_total_downloads_today,
+	get_total_downloads_week,
+	get_downloads_by_delivery_methods,
+	get_failure_rate,
+
+	get_avg_processing_time,
+	get_latency_stats,
+
+	get_total_youtube_errors,
+	get_total_youtube_errors_today,
+	get_youtube_errors_by_type,
 )
 
 
@@ -781,9 +799,87 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if update.effective_user.id != ADMIN_USER_ID:
 		return
 
-	total = get_total_users()
+	# --- Users ---
+	total_users = get_total_users()
+	new_today = get_total_new_users_today()
+	new_week = get_total_users_week()
+	top_users = get_top_users(5)
+
+	# --- Downloads ---
+	total_dl = get_total_downloads(success_only=True)
+	dl_today = get_total_downloads_today()
+	dl_week = get_total_downloads_week()
+	by_delivery = get_downloads_by_delivery_methods()
+	failure_rate = get_failure_rate()
+
+	# --- Performance ---
+	avg_latency = get_avg_processing_time()
+	latency_by_mode = get_latency_stats()
+
+	# --- Errors ---
+	total_errors = get_total_youtube_errors()
+	errors_today = get_total_youtube_errors_today()
+	errors_by_type = get_youtube_errors_by_type()
+
+	# --------------------------------------------------
+	# Formatting
+	# --------------------------------------------------
+	lines = []
+
+	lines.append("📊 <b>YT Audio Bot – Admin Stats</b>\n")
+
+	# 👥 Users
+	lines.append("👥 <b>Users</b>")
+	lines.append(f"• Total: <b>{total_users}</b>")
+	lines.append(f"• New today: <b>{new_today}</b>")
+	lines.append(f"• New 7d: <b>{new_week}</b>")
+
+	if top_users:
+		lines.append("• Top users:")
+		for u in top_users:
+			name = u["username"] or u["first_name"] or str(u["user_id"])
+			lines.append(f"  – {name}: {u['downloads_count']}")
+
+	lines.append("")
+
+	# 📥 Downloads
+	lines.append("📥 <b>Downloads</b>")
+	lines.append(f"• Total (success): <b>{total_dl}</b>")
+	lines.append(f"• Today: <b>{dl_today}</b>")
+	lines.append(f"• 7d: <b>{dl_week}</b>")
+
+	for k, v in by_delivery.items():
+		lines.append(f"• {k}: {v}")
+
+	if failure_rate is not None:
+		lines.append(f"• Failure rate: <b>{failure_rate:.2f}%</b>")
+
+	lines.append("")
+
+	# ⚡ Performance
+	lines.append("⚡ <b>Performance</b>")
+	if avg_latency:
+		lines.append(f"• Avg latency: <b>{avg_latency:.0f} ms</b>")
+
+	for mode, data in latency_by_mode.items():
+		lines.append(
+			f"• {mode}: {data['count']} | avg {data['avg_processing_time_ms']:.0f} ms"
+		)
+
+	lines.append("")
+
+	# 🚨 Errors
+	lines.append("🚨 <b>YouTube Errors</b>")
+	lines.append(f"• Total: <b>{total_errors}</b>")
+	lines.append(f"• Today: <b>{errors_today}</b>")
+
+	for etype, cnt in errors_by_type.items():
+		lines.append(f"• HTTP {etype}: {cnt}")
+
 	await update.message.reply_text(
-		f"📊 Stats\n\nTotal users: {total}"
+		"\n".join(lines),
+		parse_mode="HTML",
+		disable_web_page_preview=True,
 	)
 
 
