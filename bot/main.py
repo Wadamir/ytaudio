@@ -28,6 +28,7 @@ from db import (
 	increment_downloads,
 	log_download,
 	get_total_users,
+	
 	#--- Stats ---
 	get_total_users,
 	get_total_new_users_today,
@@ -234,6 +235,12 @@ def can_use_fast_path(info: dict, max_size_mb: float) -> bool:
 			return True
 
 	return False
+
+
+def fmt_int(value: Optional[float | int]) -> str:
+	if value is None:
+		return "—"
+	return f"{int(value):,}".replace(",", " ")
 
 
 
@@ -859,11 +866,14 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# ⚡ Performance
 	lines.append("⚡ <b>Performance</b>")
 	if avg_latency:
-		lines.append(f"• Avg latency: <b>{avg_latency:.0f} ms</b>")
+		lines.append(
+			f"• Avg latency: <b>{fmt_int(avg_latency)} ms</b>"
+		)
 
 	for mode, data in latency_by_mode.items():
 		lines.append(
-			f"• {mode}: {data['count']} | avg {data['avg_processing_time_ms']:.0f} ms"
+			f"• {mode}: {fmt_int(data['count'])} | "
+			f"avg {fmt_int(data['avg_processing_time_ms'])} ms"
 		)
 
 	lines.append("")
