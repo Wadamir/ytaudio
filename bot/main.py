@@ -8,7 +8,7 @@ import asyncio
 import random
 
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import yt_dlp # type: ignore
@@ -765,6 +765,8 @@ async def post_init(application):
 	for i in range(DOWNLOAD_WORKERS):
 		asyncio.create_task(download_worker(i + 1))
 
+	asyncio.create_task(daily_admin_report(application))
+
 
 
 # --------------------------------------------------
@@ -802,10 +804,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --------------------------------------------------
 # Admin /stats
 # --------------------------------------------------
-async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if update.effective_user.id != ADMIN_USER_ID:
-		return
-
+def build_admin_stats_text() -> str:
 	# --- Users ---
 	total_users = get_total_users()
 	new_today = get_total_new_users_today()
@@ -846,7 +845,6 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		for u in top_users:
 			name = u["username"] or u["first_name"] or str(u["user_id"])
 			lines.append(f"  – {name}: {u['downloads_count']}")
-
 	lines.append("")
 
 	# 📥 Downloads
@@ -859,8 +857,15 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		lines.append(f"• {k}: {v}")
 
 	if failure_rate is not None:
-		lines.append(f"• Failure rate: <b>{failure_rate:.2f}%</b>")
-
+		if failure_rate < 5:
+			icon = "🟢"
+		elif failure_rate < 10:
+			icon = "🟡"
+		else:
+			icon = "🔴"
+		lines.append(
+			f"• Failure rate: {icon} <b>{failure_rate:.2f}%</b>"
+		)
 	lines.append("")
 
 	# ⚡ Performance
@@ -871,23 +876,70 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 	for mode, data in latency_by_mode.items():
+		mode_label = mode or "unknown"
 		lines.append(
-			f"• {mode}: {fmt_int(data['count'])} | "
+			f"• {mode_label}: {fmt_int(data['count'])} | "
 			f"avg {fmt_int(data['avg_processing_time_ms'])} ms"
 		)
-
 	lines.append("")
 
 	# 🚨 Errors
 	lines.append("🚨 <b>YouTube Errors</b>")
 	lines.append(f"• Total: <b>{total_errors}</b>")
 	lines.append(f"• Today: <b>{errors_today}</b>")
-
-	for etype, cnt in errors_by_type.items():
+	for etype, cnt in sorted(errors_by_type.items()):
 		lines.append(f"• HTTP {etype}: {cnt}")
 
+	return "\n".join(lines)
+
+
+async def daily_admin_report(application):
+	while True:
+		now = datetime.now(timezone.utc)
+
+		next_midnight = (
+			now.replace(hour=0, minute=0, second=0, microsecond=0)
+			+ timedelta(days=1)
+		)
+
+		sleep_seconds = (next_midnight - now).total_seconds()
+		sleep_seconds = 100
+
+		logging.info(
+			f"Daily report scheduled in {int(sleep_seconds)}s "
+			f"(at {next_midnight.isoformat()})"
+		)
+
+		await asyncio.sleep(sleep_seconds)
+
+		try:
+			text = (
+				"🕛 <b>Daily report (UTC)</b>\n\n"
+				+ build_admin_stats_text()
+			)
+
+			await application.bot.send_message(
+				chat_id=ADMIN_USER_ID,
+				text=text,
+				parse_mode="HTML",
+				disable_web_page_preview=True,
+			)
+
+			logging.info("Daily admin report sent")
+
+		except Exception:
+			logging.exception("Failed to send daily admin report")
+
+		# next runs strictly every 24h
+		await asyncio.sleep(24 * 3600)
+
+
+async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+	if update.effective_user.id != ADMIN_USER_ID:
+		return
+
 	await update.message.reply_text(
-		"\n".join(lines),
+		build_admin_stats_text(),
 		parse_mode="HTML",
 		disable_web_page_preview=True,
 	)
