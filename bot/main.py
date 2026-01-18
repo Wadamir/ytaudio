@@ -903,7 +903,7 @@ async def daily_admin_report(application):
 		)
 
 		sleep_seconds = (next_midnight - now).total_seconds()
-		sleep_seconds = 100
+		# sleep_seconds = 100  # for testing
 
 		logging.info(
 			f"Daily report scheduled in {int(sleep_seconds)}s "
