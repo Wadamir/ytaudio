@@ -27,6 +27,8 @@ def utc_now_iso() -> str:
 def utc_today_iso() -> str:
 	return datetime.now(timezone.utc).date().isoformat()
 
+
+
 # --------------------------------------------------
 # Init DB
 # --------------------------------------------------
@@ -41,8 +43,13 @@ def init_db():
 				first_name TEXT,
 				last_name TEXT,
 
-				first_seen TEXT NOT NULL,
+				registered_at TEXT NOT NULL,
 				last_seen TEXT NOT NULL,
+
+				plan TEXT DEFAULT 'standard',
+				-- standard | premium | vip | trial
+				daily_limit INTEGER DEFAULT 20,
+				plan_expires_at TEXT,
 
 				downloads_count INTEGER DEFAULT 0,
 				last_video_at TEXT
@@ -121,8 +128,8 @@ def init_db():
 			ON downloads (status)
 		""")
 		conn.execute("""
-			CREATE INDEX IF NOT EXISTS idx_users_first_seen
-			ON users (first_seen)
+			CREATE INDEX IF NOT EXISTS idx_users_registered_at
+			ON users (registered_at)
 		""")
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_users_last_seen
@@ -131,6 +138,14 @@ def init_db():
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_users_downloads_count
 			ON users (downloads_count)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_users_plan
+			ON users (plan);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_users_plan_expires
+			ON users (plan_expires_at);
 		""")
 
 		conn.commit()
@@ -155,7 +170,7 @@ def register_user(user) -> None:
 					username,
 					first_name,
 					last_name,
-					first_seen,
+					registered_at,
 					last_seen,
 					downloads_count
 				)
@@ -201,7 +216,7 @@ def get_users() -> list[dict]:
 				username,
 				first_name,
 				last_name,
-				first_seen,
+				registered_at,
 				last_seen,
 				downloads_count,
 				last_video_at
@@ -215,7 +230,7 @@ def get_users() -> list[dict]:
 				"username": row[1],
 				"first_name": row[2],
 				"last_name": row[3],
-				"first_seen": row[4],
+				"registered_at": row[4],
 				"last_seen": row[5],
 				"downloads_count": row[6],
 				"last_video_at": row[7],
@@ -229,7 +244,7 @@ def get_total_new_users_today() -> int:
 		cur = conn.execute("""
 			SELECT COUNT(*)
 			FROM users
-			WHERE DATE(first_seen) = ?
+			WHERE DATE(registered_at) = ?
 		""", (now,))
 		return cur.fetchone()[0]
 	
@@ -240,7 +255,7 @@ def get_total_users_week() -> int:
 		cur = conn.execute("""
 			SELECT COUNT(*)
 			FROM users
-			WHERE DATE(first_seen) >= DATE(?, '-7 days')
+			WHERE DATE(registered_at) >= DATE(?, '-7 days')
 		""", (now,))
 		return cur.fetchone()[0]
 
@@ -269,6 +284,66 @@ def get_top_users(limit: int = 10) -> list[dict]:
 				"downloads_count": row[4],
 			})
 		return users
+
+
+
+# --------------------------------------------------
+# User plan management
+# --------------------------------------------------
+def get_user_downloads_today(user_id: int, conn=None) -> int:
+	if conn is None:
+		with get_conn() as conn:
+			return get_user_downloads_today(user_id, conn)
+
+	today = utc_today_iso()
+	cur = conn.execute("""
+		SELECT COUNT(*)
+		FROM downloads
+		WHERE user_id = ?
+			AND status = 'success'
+			AND DATE(created_at) = ?
+	""", (user_id, today))
+	return cur.fetchone()[0]
+
+
+def _normalize_user_plan_if_needed(conn, user_id: int) -> None:
+	"""
+	Normalize user plan if expired.
+	Uses caller transaction (do not commit here).
+	"""	
+	now = utc_now_iso()
+	conn.execute("""
+		UPDATE users
+		SET
+			plan = 'standard',
+			daily_limit = 20,
+			plan_expires_at = NULL
+		WHERE user_id = ?
+			AND plan_expires_at IS NOT NULL
+			AND plan_expires_at < ?
+	""", (user_id, now))
+
+
+def can_user_download(user_id: int) -> tuple[bool, int, int, str]:
+	with get_conn() as conn:
+		_normalize_user_plan_if_needed(conn, user_id)
+
+		cur = conn.execute("""
+			SELECT daily_limit, plan
+			FROM users
+			WHERE user_id = ?
+		""", (user_id,))
+		row = cur.fetchone()
+
+		if not row:
+			return False, 0, 0, "unknown"
+
+		daily_limit, plan = row
+		used_today = get_user_downloads_today(user_id, conn)
+
+		return used_today < daily_limit, used_today, daily_limit, plan
+
+
 
 # --------------------------------------------------
 # Downloads
@@ -430,6 +505,8 @@ def get_failure_rate() -> Optional[float]:
 		else:
 			return (failed_count / total_count) * 100.0
 
+
+
 # --------------------------------------------------
 # System stats
 # --------------------------------------------------
@@ -490,6 +567,7 @@ def get_latency_stats() -> dict[str, Optional[float]]:
 				"avg_processing_time_ms": avg_ms
 			}
 		return stats
+
 
 
 # --------------------------------------------------

@@ -28,6 +28,7 @@ from db import (
 	increment_downloads,
 	log_download,
 	get_total_users,
+	can_user_download,
 	
 	#--- Stats ---
 	get_total_users,
@@ -241,6 +242,22 @@ def fmt_int(value: Optional[float | int]) -> str:
 	if value is None:
 		return "—"
 	return f"{int(value):,}".replace(",", " ")
+
+
+def time_until_utc_reset() -> str:
+	now = datetime.now(timezone.utc)
+	tomorrow = (now + timedelta(days=1)).date()
+	reset_at = datetime.combine(tomorrow, datetime.min.time(), tzinfo=timezone.utc)
+
+	delta = reset_at - now
+	total_seconds = int(delta.total_seconds())
+
+	hours, remainder = divmod(total_seconds, 3600)
+	minutes = remainder // 60
+
+	if hours > 0:
+		return f"{hours}h {minutes}m"
+	return f"{minutes}m"
 
 
 
@@ -759,17 +776,6 @@ async def process_job(job: dict):
 
 
 # --------------------------------------------------
-# Application lifecycle hooks
-# --------------------------------------------------
-async def post_init(application):
-	for i in range(DOWNLOAD_WORKERS):
-		asyncio.create_task(download_worker(i + 1))
-
-	asyncio.create_task(daily_admin_report(application))
-
-
-
-# --------------------------------------------------
 # Handlers
 # --------------------------------------------------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -780,6 +786,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	register_user(user)
 
 	cleanup_old_files()
+
+	allowed, used, limit, plan = can_user_download(user.id)
+	if not allowed:
+		reset_in = time_until_utc_reset()
+		
+		await update.message.reply_text(
+			(
+				"🚫 <b>Daily limit reached</b>\n\n"
+				f"Plan: <b>{plan}</b>\n"
+				f"Used today: <b>{used} / {limit}</b>\n\n"
+				f"⏰ Limit resets in <b>{reset_in}</b>\n\n"
+				f"✨ Upgrade your plan to increase daily limits."
+			),
+			parse_mode="HTML",
+		)
+		return	
 
 	url = update.message.text.strip()
 
@@ -798,6 +820,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	}
 
 	await download_queue.put(job)
+
+
+
+# --------------------------------------------------
+# Monetization /plan
+# --------------------------------------------------
+async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+	user = update.effective_user
+	register_user(user)
+
+	allowed, used, limit, plan = can_user_download(user.id)
+	reset_in = time_until_utc_reset()
+
+	plan_name = plan.capitalize()
+
+	lines = []
+	lines.append("📦 <b>Your plan</b>\n")
+	lines.append(f"• Plan: <b>{plan_name}</b>")
+	lines.append(f"• Daily limit: <b>{limit}</b>")
+	lines.append(f"• Used today: <b>{used} / {limit}</b>")
+	lines.append(f"• Reset in: <b>{reset_in}</b>")
+
+	if not allowed:
+		lines.append("\n🚫 <b>Daily limit reached</b>")
+
+	lines.append("\n✨ Upgrade your plan to increase limits.")
+
+	await update.message.reply_text(
+		"\n".join(lines),
+		parse_mode="HTML",
+		disable_web_page_preview=True,
+	)
 
 
 
@@ -947,6 +1001,17 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # --------------------------------------------------
+# Application lifecycle hooks
+# --------------------------------------------------
+async def post_init(application):
+	for i in range(DOWNLOAD_WORKERS):
+		asyncio.create_task(download_worker(i + 1))
+
+	asyncio.create_task(daily_admin_report(application))
+
+
+
+# --------------------------------------------------
 # App bootstrap
 # --------------------------------------------------
 def main():
@@ -963,6 +1028,7 @@ def main():
 	# 	app.create_task(download_worker(i + 1))
 
 	app.add_handler(CommandHandler("stats", stats_handler))
+	app.add_handler(CommandHandler("plan", plan_handler))
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 	logging.info("Bot started")
