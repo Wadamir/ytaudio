@@ -6,6 +6,8 @@ import shutil
 import re
 import asyncio
 import random
+import logging
+import sqlite3
 
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
@@ -48,6 +50,7 @@ from db import (
 	get_total_youtube_errors,
 	get_total_youtube_errors_today,
 	get_youtube_errors_by_type,
+	get_failed_downloads_last_24h,
 )
 
 
@@ -260,6 +263,22 @@ def time_until_utc_reset() -> str:
 	return f"{minutes}m"
 
 
+async def global_error_handler(update, context):
+	error = context.error
+	logging.exception("Unhandled exception", exc_info=error)
+
+	try:
+		await context.bot.send_message(
+			chat_id=ADMIN_USER_ID,
+			text=(
+				"🚨 <b>Unhandled exception</b>\n\n"
+				f"<code>{str(error)[:400]}</code>"
+			),
+			parse_mode="HTML",
+		)
+	except Exception:
+		pass
+
 
 # --------------------------------------------------
 # yt-dlp base options
@@ -424,29 +443,38 @@ async def process_job(job: dict):
 			logging.exception("Metadata extraction failed")
 			await status_msg.edit_text("❌ Failed to read video info.")
 
-			log_download(
-				user_id=user.id,
+			try:
+				log_download(
+					user_id=user.id,
 
-				video_url=url,
-				video_id=None,
-				video_title=None,
+					video_url=url,
+					video_id=None,
+					video_title=None,
 
-				duration_seconds=None,
+					duration_seconds=None,
 
-				chosen_bitrate=AUDIO_BITRATE_KBPS,
-				estimated_size_mb=None,
-				real_size_mb=None,
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=None,
+					real_size_mb=None,
 
-				processing_mode=processing_mode,
-				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
 
-				delivery_method="failed",
+					delivery_method="failed",
 
-				status="failed",
+					status="failed",
 
-				error_message=str(e),
-				fallback_reason="metadata_extraction_failed",
-			)
+					error_message=str(e),
+					fallback_reason="metadata_extraction_failed",
+				)
+			except sqlite3.OperationalError as db_e:
+				await notify_admin_once(
+					application,
+					key="sqlite_operational_error",
+					text=f"Database error during logging: {str(db_e)[:400]}",
+				)
+				raise
+
 			return
 
 		title = info.get("title", "audio")
@@ -458,29 +486,37 @@ async def process_job(job: dict):
 			logging.warning("Video duration unknown")
 			await status_msg.edit_text("❌ Cannot determine video duration.")
 
-			log_download(
-				user_id=user.id,
+			try:
+				log_download(
+					user_id=user.id,
 
-				video_url=url,
-				video_id=info.get("id") if info else None,
-				video_title=title if "title" in locals() else None,
+					video_url=url,
+					video_id=info.get("id") if info else None,
+					video_title=title if "title" in locals() else None,
 
-				duration_seconds=duration if "duration" in locals() else None,
+					duration_seconds=duration if "duration" in locals() else None,
 
-				chosen_bitrate=AUDIO_BITRATE_KBPS,
-				estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
-				real_size_mb=None,
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=estimated_size if "estimated_size" in locals() else None,
+					real_size_mb=None,
 
-				processing_mode=processing_mode,
-				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
 
-				delivery_method="failed",
+					delivery_method="failed",
 
-				status="failed",
+					status="failed",
 
-				error_message="Unknown video duration",
-				fallback_reason="unknown_duration",
-			)
+					error_message="Unknown video duration",
+					fallback_reason="unknown_duration",
+				)
+			except sqlite3.OperationalError as db_e:
+				await notify_admin_once(
+					application,
+					key="sqlite_operational_error",
+					text=f"Database error during logging: {str(db_e)[:400]}",
+				)
+				raise
 
 			return
 
@@ -542,29 +578,38 @@ async def process_job(job: dict):
 			logging.exception("Audio download failed")
 			await status_msg.edit_text("❌ Failed to download audio.")
 
-			log_download(
-				user_id=user.id,
+			try:
+				log_download(
+					user_id=user.id,
 
-				video_url=url,
-				video_id=info.get("id") if info else None,
-				video_title=title if "title" in locals() else None,
+					video_url=url,
+					video_id=info.get("id") if info else None,
+					video_title=title if "title" in locals() else None,
 
-				duration_seconds=duration if "duration" in locals() else None,
+					duration_seconds=duration if "duration" in locals() else None,
 
-				chosen_bitrate=AUDIO_BITRATE_KBPS,
-				estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
-				real_size_mb=None,
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+					real_size_mb=None,
 
-				processing_mode=processing_mode,
-				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
 
-				delivery_method="failed",
+					delivery_method="failed",
 
-				status="failed",
+					status="failed",
 
-				error_message=str(e),
-				fallback_reason="download_failed",
-			)
+					error_message=str(e),
+					fallback_reason="download_failed",
+				)
+			except sqlite3.OperationalError as db_e:
+				await notify_admin_once(
+					application,
+					key="sqlite_operational_error",
+					text=f"Database error during logging: {str(db_e)[:400]}",
+				)
+				raise
+
 			return	
 
 		# --- Telegram upload possible ---
@@ -593,53 +638,70 @@ async def process_job(job: dict):
 				await status_msg.delete()
 
 				increment_downloads(user.id)
-				log_download(
-					user_id=user.id,
 
-					video_url=url,
-					video_id=info.get("id"),
-					video_title=title,
+				try:
+					log_download(
+						user_id=user.id,
 
-					duration_seconds=duration,
+						video_url=url,
+						video_id=info.get("id"),
+						video_title=title,
 
-					chosen_bitrate=AUDIO_BITRATE_KBPS,
-					estimated_size_mb=estimated_size_mb,
-					real_size_mb=real_size_mb,
+						duration_seconds=duration,
 
-					processing_mode=processing_mode,
-					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+						chosen_bitrate=AUDIO_BITRATE_KBPS,
+						estimated_size_mb=estimated_size_mb,
+						real_size_mb=real_size_mb,
 
-					delivery_method="telegram",
+						processing_mode=processing_mode,
+						processing_time_ms=int((time.monotonic() - start_ts) * 1000),
 
-					status="success",
-				)
+						delivery_method="telegram",
+
+						status="success",
+					)
+				except sqlite3.OperationalError as db_e:
+					await notify_admin_once(
+						application,
+						key="sqlite_operational_error",
+						text=f"Database error during logging: {str(db_e)[:400]}",
+					)
+					raise
 
 			except Exception as e:
 				logging.exception("Telegram upload failed")
 				await status_msg.edit_text("❌ Failed to send audio.")
-				log_download(
-					user_id=user.id,
+				try:
+					log_download(
+						user_id=user.id,
 
-					video_url=url,
-					video_id=info.get("id") if info else None,
-					video_title=title if "title" in locals() else None,
+						video_url=url,
+						video_id=info.get("id") if info else None,
+						video_title=title if "title" in locals() else None,
 
-					duration_seconds=duration if "duration" in locals() else None,
+						duration_seconds=duration if "duration" in locals() else None,
 
-					chosen_bitrate=AUDIO_BITRATE_KBPS,
-					estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
-					real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
+						chosen_bitrate=AUDIO_BITRATE_KBPS,
+						estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+						real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
 
-					processing_mode=processing_mode,
-					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+						processing_mode=processing_mode,
+						processing_time_ms=int((time.monotonic() - start_ts) * 1000),
 
-					delivery_method="failed",
+						delivery_method="failed",
 
-					status="failed",
+						status="failed",
 
-					error_message=str(e),
-					fallback_reason="telegram_upload_failed",
-				)	
+						error_message=str(e),
+						fallback_reason="telegram_upload_failed",
+					)	
+				except sqlite3.OperationalError as db_e:
+					await notify_admin_once(
+						application,
+						key="sqlite_operational_error",
+						text=f"Database error during logging: {str(db_e)[:400]}",
+					)
+					raise
 
 			finally:
 				if "tmp_path" in locals() and tmp_path.exists():
@@ -688,34 +750,84 @@ async def process_job(job: dict):
 			await status_msg.delete()
 
 			increment_downloads(user.id)
-			log_download(
-				user_id=user.id,
+			try:
+				log_download(
+					user_id=user.id,
 
-				video_url=url,
-				video_id=info.get("id"),
-				video_title=title,
+					video_url=url,
+					video_id=info.get("id"),
+					video_title=title,
 
-				duration_seconds=duration,
+					duration_seconds=duration,
 
-				chosen_bitrate=AUDIO_BITRATE_KBPS,
-				estimated_size_mb=estimated_size_mb,
-				real_size_mb=real_size_mb,
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=estimated_size_mb,
+					real_size_mb=real_size_mb,
 
-				processing_mode=processing_mode,
-				processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
 
-				delivery_method="link",
+					delivery_method="link",
 
-				status="success",
+					status="success",
 
-				file_path=str(final_path),
-				download_url=link
-			)
+					file_path=str(final_path),
+					download_url=link
+				)
+			except sqlite3.OperationalError as db_e:
+				await notify_admin_once(
+					application,
+					key="sqlite_operational_error",
+					text=f"Database error during logging: {str(db_e)[:400]}",
+				)
+				raise
 
 		except Exception as e:
 			logging.exception("Download link generation failed")
 			await status_msg.edit_text("❌ Failed to create download link.")
 
+			try:
+				log_download(
+					user_id=user.id,
+
+					video_url=url,
+					video_id=info.get("id") if info else None,
+					video_title=title if "title" in locals() else None,
+
+					duration_seconds=duration if "duration" in locals() else None,
+
+					chosen_bitrate=AUDIO_BITRATE_KBPS,
+					estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
+					real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
+
+					processing_mode=processing_mode,
+					processing_time_ms=int((time.monotonic() - start_ts) * 1000),
+
+					delivery_method="failed",
+
+					status="failed",
+
+					error_message=str(e),
+					fallback_reason="link_generation_failed",
+				)
+			except sqlite3.OperationalError as db_e:
+				await notify_admin_once(
+					application,
+					key="sqlite_operational_error",
+					text=f"Database error during logging: {str(db_e)[:400]}",
+				)
+				raise
+
+		finally:
+			if "tmp_path" in locals() and tmp_path.exists():
+				tmp_path.unlink()
+
+	
+	except Exception as e:
+		logging.exception("Download worker failed")
+		await status_msg.edit_text("❌ An error occurred during processing. Please try again later.")
+
+		try:
 			log_download(
 				user_id=user.id,
 
@@ -737,41 +849,15 @@ async def process_job(job: dict):
 				status="failed",
 
 				error_message=str(e),
-				fallback_reason="link_generation_failed",
+				fallback_reason="worker_failed",
 			)
-
-		finally:
-			if "tmp_path" in locals() and tmp_path.exists():
-				tmp_path.unlink()
-
-	
-	except Exception as e:
-		logging.exception("Download worker failed")
-		await status_msg.edit_text("❌ An error occurred during processing. Please try again later.")
-
-		log_download(
-			user_id=user.id,
-
-			video_url=url,
-			video_id=info.get("id") if info else None,
-			video_title=title if "title" in locals() else None,
-
-			duration_seconds=duration if "duration" in locals() else None,
-
-			chosen_bitrate=AUDIO_BITRATE_KBPS,
-			estimated_size_mb=estimated_size_mb if "estimated_size_mb" in locals() else None,
-			real_size_mb=real_size_mb if "real_size_mb" in locals() else None,
-
-			processing_mode=processing_mode,
-			processing_time_ms=int((time.monotonic() - start_ts) * 1000),
-
-			delivery_method="failed",
-
-			status="failed",
-
-			error_message=str(e),
-			fallback_reason="worker_failed",
-		)
+		except sqlite3.OperationalError as db_e:
+			await notify_admin_once(
+				application,
+				key="sqlite_operational_error",
+				text=f"Database error during logging: {str(db_e)[:400]}",
+			)
+			raise
 
 
 
@@ -880,6 +966,7 @@ def build_admin_stats_text() -> str:
 	total_errors = get_total_youtube_errors()
 	errors_today = get_total_youtube_errors_today()
 	errors_by_type = get_youtube_errors_by_type()
+	errors_downloads = get_failed_downloads_last_24h()
 
 	# --------------------------------------------------
 	# Formatting
@@ -943,6 +1030,13 @@ def build_admin_stats_text() -> str:
 	lines.append(f"• Today: <b>{errors_today}</b>")
 	for etype, cnt in sorted(errors_by_type.items()):
 		lines.append(f"• HTTP {etype}: {cnt}")
+	if errors_downloads:
+		lines.append("• Failed downloads last 24h:")
+		for e in errors_downloads[:5]:
+			lines.append(f"• {e['count']} x {e['error'][:80]}")
+	else:
+		lines.append("")
+		lines.append("✅ <b>No errors in last 24h</b>")
 
 	return "\n".join(lines)
 
@@ -988,6 +1082,19 @@ async def daily_admin_report(application):
 		await asyncio.sleep(24 * 3600)
 
 
+async def notify_admin_once(application, key: str, text: str):
+	cache = application.bot_data.setdefault("error_cache", set())
+	if key in cache:
+		return
+	cache.add(key)
+
+	await application.bot.send_message(
+		chat_id=ADMIN_USER_ID,
+		text=f"🚨 <b>Critical error</b>\n\n{text}",
+		parse_mode="HTML"
+	)
+
+
 async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if update.effective_user.id != ADMIN_USER_ID:
 		return
@@ -1023,6 +1130,8 @@ def main():
 		.post_init(post_init)
 		.build()
 	)
+
+	app.add_error_handler(global_error_handler)
 
 	# for i in range(DOWNLOAD_WORKERS):
 	# 	app.create_task(download_worker(i + 1))

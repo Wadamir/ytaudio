@@ -1,8 +1,9 @@
 FROM python:3.11-slim
 
 ENV PYTHONUNBUFFERED=1
+WORKDIR /app
 
-# Install system dependencies + Node.js
+# System deps (rarely change)
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
 		ffmpeg \
@@ -13,13 +14,11 @@ RUN apt-get update \
 	&& apt-get clean \
 	&& rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
-
-# Python deps
-COPY bot/requirements.txt .
+# Python deps (cached)
+COPY bot/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# App code
+# App code (changes often)
 COPY bot/ .
 
 # YouTube cookies

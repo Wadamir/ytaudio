@@ -46,13 +46,30 @@ def init_db():
 				registered_at TEXT NOT NULL,
 				last_seen TEXT NOT NULL,
 
-				plan TEXT DEFAULT 'standard',
-				-- standard | premium | vip | trial
-				daily_limit INTEGER DEFAULT 20,
+				plan_id INTEGER NOT NULL DEFAULT 0,
+				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
+				-- from plans table
 				plan_expires_at TEXT,
 
 				downloads_count INTEGER DEFAULT 0,
+				subscriptions_count INTEGER DEFAULT 0,
 				last_video_at TEXT
+			)
+		""")
+
+		# --- plans ---
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS plans (
+				plan_id INTEGER PRIMARY KEY,
+			
+				name TEXT NOT NULL,
+			
+				daily_limit INTEGER NOT NULL,
+				max_subscriptions INTEGER NOT NULL DEFAULT 0,
+
+				priority INTEGER DEFAULT 0,
+				description TEXT,
+				price_stars INTEGER
 			)
 		""")
 
@@ -96,6 +113,31 @@ def init_db():
 				FOREIGN KEY (user_id) REFERENCES users(user_id)
 			)
 		""")
+
+		# --- subscriptions ---
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS subscriptions (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+				user_id INTEGER NOT NULL,
+				plan_id INTEGER NOT NULL,
+
+				channel_id TEXT NOT NULL,
+				channel_title TEXT,
+
+				is_active INTEGER NOT NULL DEFAULT 0,
+
+				last_video_id TEXT,
+				last_checked_at TEXT,
+
+				created_at TEXT NOT NULL,
+
+				FOREIGN KEY (user_id) REFERENCES users(user_id),
+				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
+
+				UNIQUE (user_id, channel_id)
+			);
+		""")			
 		
 		# --- youtube_errors ---
 		conn.execute("""
@@ -146,6 +188,18 @@ def init_db():
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_users_plan_expires
 			ON users (plan_expires_at);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_subscriptions_user_id
+			ON subscriptions (user_id);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_subscriptions_channel_id
+			ON subscriptions (channel_id);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_subscriptions_is_active
+			ON subscriptions (is_active);
 		""")
 
 		conn.commit()
@@ -315,8 +369,7 @@ def _normalize_user_plan_if_needed(conn, user_id: int) -> None:
 	conn.execute("""
 		UPDATE users
 		SET
-			plan = 'standard',
-			daily_limit = 20,
+			plan_id = 0,
 			plan_expires_at = NULL
 		WHERE user_id = ?
 			AND plan_expires_at IS NOT NULL
@@ -329,8 +382,11 @@ def can_user_download(user_id: int) -> tuple[bool, int, int, str]:
 		_normalize_user_plan_if_needed(conn, user_id)
 
 		cur = conn.execute("""
-			SELECT daily_limit, plan
-			FROM users
+			SELECT
+				p.daily_limit,
+				p.name
+			FROM users u
+			JOIN plans p ON u.plan_id = p.plan_id
 			WHERE user_id = ?
 		""", (user_id,))
 		row = cur.fetchone()
@@ -342,6 +398,37 @@ def can_user_download(user_id: int) -> tuple[bool, int, int, str]:
 		used_today = get_user_downloads_today(user_id, conn)
 
 		return used_today < daily_limit, used_today, daily_limit, plan
+	
+
+def can_user_subscribe(user_id: int) -> tuple[bool, int, int, str]:
+	with get_conn() as conn:
+		_normalize_user_plan_if_needed(conn, user_id)
+
+		cur = conn.execute("""
+			SELECT
+				p.max_subscriptions,
+				p.name
+			FROM users u
+			JOIN plans p ON u.plan_id = p.plan_id
+			WHERE user_id = ?
+		""", (user_id,))
+		row = cur.fetchone()
+
+		if not row:
+			return False, 0, 0, "unknown"
+		
+		max_subscriptions, plan = row
+		if max_subscriptions == 0:
+			return True, 0, 0, plan  # unlimited
+		
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM subscriptions
+			WHERE user_id = ?
+		""", (user_id,))
+		current_subscriptions = cur.fetchone()[0]
+
+		return current_subscriptions < max_subscriptions, current_subscriptions, max_subscriptions, plan
 
 
 
@@ -657,3 +744,19 @@ def get_youtube_errors_by_type() -> dict[str, int]:
 		for row in rows:
 			errors[row[0]] = row[1]
 		return errors
+	
+
+def get_failed_downloads_last_24h() -> list[dict]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				error_message,
+				COUNT(*) as cnt
+			FROM downloads
+			WHERE status = 'failed'
+				AND created_at >= datetime('now', '-1 day')
+				AND error_message IS NOT NULL
+			GROUP BY error_message
+			ORDER BY cnt DESC
+		""")
+		return [{"error": r[0], "count": r[1]} for r in cur.fetchall()]
