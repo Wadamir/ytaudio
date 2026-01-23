@@ -49,7 +49,7 @@ def init_db():
 				price_stars INTEGER
 			)
 		""")
-				
+
 		# --- users ---
 		conn.execute("""
 			CREATE TABLE IF NOT EXISTS users (
@@ -67,7 +67,7 @@ def init_db():
 
 				downloads_count INTEGER DEFAULT 0,
 				subscriptions_count INTEGER DEFAULT 0,
-				last_video_at TEXT
+				last_video_at TEXT,
 
 				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
 				-- from plans table			   
