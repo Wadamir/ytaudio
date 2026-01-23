@@ -69,8 +69,7 @@ def init_db():
 				subscriptions_count INTEGER DEFAULT 0,
 				last_video_at TEXT,
 
-				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
-				-- from plans table			   
+				FOREIGN KEY (plan_id) REFERENCES plans(plan_id)
 			)
 		""")
 
