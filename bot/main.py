@@ -662,23 +662,28 @@ async def process_job(job: dict):
 		# --- Telegram upload possible ---
 		if real_size_mb <= MAX_TG_AUDIO_EFFECTIVE_MB:
 			try:
-				# 1. Try YouTube thumbnail
-				thumb_msg = None
-				thumb_url = info.get("thumbnail")
-				if thumb_url:
-					try:
-						# --- Send thumbnail ---
-						thumb_msg = await status_msg.reply_photo(photo=thumb_url)
-					except Exception as e:
-						logging.warning(f"Failed to send thumbnail: {e}")
+				# # 1. Try YouTube thumbnail
+				# thumb_msg = None
+				# thumb_url = info.get("thumbnail")
+				# if thumb_url:
+				# 	try:
+				# 		# --- Send thumbnail ---
+				# 		thumb_msg = await status_msg.reply_photo(photo=thumb_url)
+				# 	except Exception as e:
+				# 		logging.warning(f"Failed to send thumbnail: {e}")
 
-				# 2. Fallback to local placeholder
-				if not thumb_msg and PLACEHOLDER_THUMBNAIL.exists():
-					try:
-						with open(PLACEHOLDER_THUMBNAIL, "rb") as f:
-							thumb_msg = await status_msg.reply_photo(photo=f)
-					except Exception as e:
-						logging.warning(f"Placeholder thumbnail failed: {e}")
+				# # 2. Fallback to local placeholder
+				# if not thumb_msg and PLACEHOLDER_THUMBNAIL.exists():
+				# 	try:
+				# 		with open(PLACEHOLDER_THUMBNAIL, "rb") as f:
+				# 			thumb_msg = await status_msg.reply_photo(photo=f)
+				# 	except Exception as e:
+				# 		logging.warning(f"Placeholder thumbnail failed: {e}")
+
+				thumb_file = await get_audio_thumbnail(
+					thumb_url=info.get("thumbnail"),
+					video_id=info.get("id"),
+				)
 
 				# --- Send audio ---
 				with open(tmp_path, "rb") as f:
@@ -688,11 +693,15 @@ async def process_job(job: dict):
 						performer=info.get("uploader"),
 						duration=duration,
 						filename=build_audio_filename(info),
-						#thumb = PLACEHOLDER_THUMBNAIL if PLACEHOLDER_THUMBNAIL.exists() else None,
+						thumb=thumb_file,
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
 						reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
 					)
+
+				# --- Cleanup ---
+				if thumb_file:
+					thumb_file.close()
 
 				try:
 					await status_msg.delete()
