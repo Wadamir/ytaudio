@@ -688,7 +688,7 @@ async def process_job(job: dict):
 						performer=info.get("uploader"),
 						duration=duration,
 						filename=build_audio_filename(info),
-						thumb = PLACEHOLDER_THUMBNAIL if PLACEHOLDER_THUMBNAIL.exists() else None,
+						#thumb = PLACEHOLDER_THUMBNAIL if PLACEHOLDER_THUMBNAIL.exists() else None,
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
 						reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
