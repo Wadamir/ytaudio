@@ -226,9 +226,12 @@ def register_user(user) -> None:
 					last_name,
 					registered_at,
 					last_seen,
-					downloads_count
+					downloads_count,
+					subscriptions_count,
+					last_video_at,
+					plan_id
 				)
-				VALUES (?, ?, ?, ?, ?, ?, 0)
+				VALUES (?, ?, ?, ?, ?, ?, 0, 0, NULL, 0)
 			""", (
 				user.id,
 				user.username,
