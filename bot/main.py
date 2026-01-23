@@ -696,7 +696,7 @@ async def process_job(job: dict):
 						thumb=thumb_file,
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
-						reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
+						# reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
 					)
 
 				# --- Cleanup ---
