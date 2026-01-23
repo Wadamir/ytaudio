@@ -8,10 +8,13 @@ import asyncio
 import random
 import logging
 import sqlite3
+import aiohttp
+import logging
 
+from PIL import Image
 from pathlib import Path
+from typing import Optional, BinaryIO
 from datetime import datetime, timedelta, timezone
-from typing import Optional
 
 import yt_dlp # type: ignore
 
@@ -101,6 +104,8 @@ BASE_URL = os.getenv("BASE_URL", "http://localhost:8080")
 COOKIES_PATH = "/cookies.txt"
 
 ASSETS_DIR = Path(__file__).parent / "assets"
+TMP_DIR = Path("/tmp/ytaudio_thumbs")
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 PLACEHOLDER_THUMBNAIL = ASSETS_DIR / "youtube_placeholder.jpg"
 
 if APP_ENV == "dev":
@@ -281,6 +286,45 @@ async def global_error_handler(update, context):
 		)
 	except Exception:
 		pass
+
+
+async def get_audio_thumbnail(
+	thumb_url: Optional[str],
+	video_id: Optional[str],
+) -> Optional[BinaryIO]:
+	"""
+	Returns an opened file object for Telegram audio thumbnail.
+	Always falls back to placeholder if thumbnail is invalid.
+	"""
+
+	# 1️⃣ Try YouTube thumbnail
+	if thumb_url and video_id:
+		tmp_path = TMP_DIR / f"{video_id}.jpg"
+
+		try:
+			async with aiohttp.ClientSession() as session:
+				async with session.get(thumb_url, timeout=10) as resp:
+					if resp.status == 200:
+						tmp_path.write_bytes(await resp.read())
+
+			# Validate image via Pillow
+			if tmp_path.exists():
+				try:
+					with Image.open(tmp_path) as img:
+						img.verify()  # validate file
+					return open(tmp_path, "rb")
+				except Exception:
+					logging.warning("Downloaded thumbnail is not a valid image")
+
+		except Exception as e:
+			logging.warning(f"Thumbnail download failed: {e}")
+
+	# 2️⃣ Fallback
+	if PLACEHOLDER_THUMBNAIL.exists():
+		return open(PLACEHOLDER_THUMBNAIL, "rb")
+
+	return None
+
 
 
 # --------------------------------------------------
@@ -644,7 +688,7 @@ async def process_job(job: dict):
 						performer=info.get("uploader"),
 						duration=duration,
 						filename=build_audio_filename(info),
-						# thumb = PLACEHOLDER_THUMBNAIL if PLACEHOLDER_THUMBNAIL.exists() else None,
+						thumb = PLACEHOLDER_THUMBNAIL if PLACEHOLDER_THUMBNAIL.exists() else None,
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
 						reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
