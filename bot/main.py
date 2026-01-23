@@ -686,17 +686,18 @@ async def process_job(job: dict):
 				)
 
 				# --- Send audio ---
-				with open(tmp_path, "rb") as f:
-					await status_msg.reply_audio(
-						audio=f,
+				with open(tmp_path, "rb") as audio_f:
+					await application.bot.send_audio(
+						chat_id=status_msg.chat_id,
+						audio=audio_f,
 						title=title,
 						performer=info.get("uploader"),
 						duration=duration,
 						filename=build_audio_filename(info),
-						thumb=thumb_file,
+						thumbnail=thumb_file,
 						caption=f"{BOT_CAPTION} <b>{BOT_USERNAME}</b>",
 						parse_mode="HTML",
-						# reply_to_message_id=thumb_msg.message_id if thumb_msg else None,
+						reply_to_message_id=status_msg.message_id,
 					)
 
 				# --- Cleanup ---
