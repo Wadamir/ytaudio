@@ -34,29 +34,6 @@ def utc_today_iso() -> str:
 # --------------------------------------------------
 def init_db():
 	with get_conn() as conn:
-		# --- users ---
-		conn.execute("""
-			CREATE TABLE IF NOT EXISTS users (
-				user_id INTEGER PRIMARY KEY,
-
-				username TEXT,
-				first_name TEXT,
-				last_name TEXT,
-
-				registered_at TEXT NOT NULL,
-				last_seen TEXT NOT NULL,
-
-				plan_id INTEGER NOT NULL DEFAULT 0,
-				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
-				-- from plans table
-				plan_expires_at TEXT,
-
-				downloads_count INTEGER DEFAULT 0,
-				subscriptions_count INTEGER DEFAULT 0,
-				last_video_at TEXT
-			)
-		""")
-
 		# --- plans ---
 		conn.execute("""
 			CREATE TABLE IF NOT EXISTS plans (
@@ -70,6 +47,30 @@ def init_db():
 				priority INTEGER DEFAULT 0,
 				description TEXT,
 				price_stars INTEGER
+			)
+		""")
+				
+		# --- users ---
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS users (
+				user_id INTEGER PRIMARY KEY,
+
+				username TEXT,
+				first_name TEXT,
+				last_name TEXT,
+
+				registered_at TEXT NOT NULL,
+				last_seen TEXT NOT NULL,
+
+				plan_id INTEGER NOT NULL DEFAULT 0,
+				plan_expires_at TEXT,
+
+				downloads_count INTEGER DEFAULT 0,
+				subscriptions_count INTEGER DEFAULT 0,
+				last_video_at TEXT
+
+				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
+				-- from plans table			   
 			)
 		""")
 
@@ -183,7 +184,7 @@ def init_db():
 		""")
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_users_plan
-			ON users (plan);
+			ON users (plan_id);
 		""")
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_users_plan_expires
