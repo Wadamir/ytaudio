@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram.ext import ApplicationBuilder
+from telegram.ext import ApplicationBuilder # type: ignore
 
 from bot.db.db import init_db
 from bot.i18n.validate import validate_translations

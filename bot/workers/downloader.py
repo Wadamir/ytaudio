@@ -23,6 +23,7 @@ async def process_job(job: Dict, bot: Bot):
 	chat_id: int = job["chat_id"]
 	message_id: int = job["message_id"]
 	url: str = job["url"]
+	bot: Bot = job["bot"]
 
 	tmp_id = uuid.uuid4().hex
 	out_tpl = AUDIO_DIR / f"{tmp_id}.%(ext)s"
