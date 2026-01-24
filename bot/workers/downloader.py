@@ -1,51 +1,129 @@
 # bot/workers/downloader.py
-import logging
 import asyncio
+import logging
+import os
+import subprocess
+import uuid
+from pathlib import Path
 from typing import Dict
 
-from telegram import Bot
+from telegram import Bot # type: ignore
+
+from bot.db.db import increment_downloads, log_download
 from bot.i18n.helpers import tr_user
 
+logger = logging.getLogger(__name__)
 
-log = logging.getLogger(__name__)
+AUDIO_DIR = Path("/storage/audio")
+AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
 async def process_job(job: Dict):
-	"""
-	Mock downloader.
-	Simulates successful audio processing.
-	"""
-
-	log.info("[downloader] received job")
+	logger.info("[downloader] received job")
 
 	user = job["user"]
-	status_msg = job["status_msg"]
-	application = job["application"]
+	bot: Bot = job["bot"]
+	url: str = job["url"]
+	message_id: int = job["message_id"]
+	chat_id: int = job["chat_id"]
 
-	bot: Bot = application.bot
+	tmp_id = uuid.uuid4().hex
+	out_tpl = AUDIO_DIR / f"{tmp_id}.%(ext)s"
 
-	# ⏳ simulate processing
-	await asyncio.sleep(2)
-
-	# ✏️ update status message
+	# --- notify user ---
 	await bot.edit_message_text(
-		chat_id=status_msg.chat_id,
-		message_id=status_msg.message_id,
+		chat_id=chat_id,
+		message_id=message_id,
 		text=tr_user(user.id, "reading_info"),
 	)
 
-	await asyncio.sleep(2)
+	start_ts = asyncio.get_event_loop().time()
 
-	# ✅ final result
-	await bot.edit_message_text(
-		chat_id=status_msg.chat_id,
-		message_id=status_msg.message_id,
-		text=(
-			"✅ <b>Mock download completed</b>\n\n"
-			"🎵 Audio processing pipeline is working.\n"
-			"(yt-dlp not connected yet)"
-		),
-		parse_mode="HTML",
+	cmd = [
+		"yt-dlp",
+		"-f", "bestaudio",
+		"--extract-audio",
+		"--audio-format", "mp3",
+		"--audio-quality", "192K",
+		"--no-playlist",
+		"--cookies", "/cookies.txt",
+		"-o", str(out_tpl),
+		url,
+	]
+
+	proc = await asyncio.create_subprocess_exec(
+		*cmd,
+		stdout=asyncio.subprocess.PIPE,
+		stderr=asyncio.subprocess.PIPE,
 	)
 
-	log.info("[downloader] mock job finished successfully")
+	stdout, stderr = await proc.communicate()
+
+	if proc.returncode != 0:
+		err = stderr.decode("utf-8", errors="ignore")
+		logger.error("yt-dlp failed: %s", err)
+
+		await bot.edit_message_text(
+			chat_id=chat_id,
+			message_id=message_id,
+			text=tr_user(user.id, "failed_download"),
+		)
+
+		log_download(
+			user_id=user.id,
+			video_url=url,
+			video_id=None,
+			video_title=None,
+			duration_seconds=None,
+			chosen_bitrate=192,
+			estimated_size_mb=None,
+			real_size_mb=None,
+			processing_mode="yt-dlp",
+			processing_time_ms=None,
+			delivery_method="failed",
+			status="failed",
+			error_message=err[:500],
+		)
+		return
+
+	# --- find resulting file ---
+	files = list(AUDIO_DIR.glob(f"{tmp_id}.*"))
+	if not files:
+		raise RuntimeError("yt-dlp finished but file not found")
+
+	audio_file = files[0]
+	size_mb = audio_file.stat().st_size / 1024 / 1024
+	processing_ms = int((asyncio.get_event_loop().time() - start_ts) * 1000)
+
+	# --- send audio ---
+	await bot.send_audio(
+		chat_id=chat_id,
+		audio=open(audio_file, "rb"),  # type: ignore
+		caption=tr_user(user.id, "download_ready_caption"),
+	)
+
+	await bot.edit_message_text(
+		chat_id=chat_id,
+		message_id=message_id,
+		text="✅ Done",
+	)
+
+	increment_downloads(user.id)
+
+	log_download(
+		user_id=user.id,
+		video_url=url,
+		video_id=None,
+		video_title=None,
+		duration_seconds=None,
+		chosen_bitrate=192,
+		estimated_size_mb=None,
+		real_size_mb=round(size_mb, 2),
+		processing_mode="yt-dlp",
+		processing_time_ms=processing_ms,
+		delivery_method="telegram",
+		status="success",
+		file_path=str(audio_file),
+	)
+
+	logger.info("[downloader] job finished successfully")
