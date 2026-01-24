@@ -61,7 +61,6 @@ def init_db():
 				plan_expires_at TEXT,
 
 				downloads_count INTEGER DEFAULT 0,
-				subscriptions_count INTEGER DEFAULT 0,
 				last_video_at TEXT,
 
 				FOREIGN KEY (plan_id) REFERENCES plans(plan_id)
@@ -115,7 +114,6 @@ def init_db():
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 				user_id INTEGER NOT NULL,
-				plan_id INTEGER NOT NULL,
 
 				channel_id TEXT NOT NULL,
 				channel_title TEXT,
@@ -128,8 +126,6 @@ def init_db():
 				created_at TEXT NOT NULL,
 
 				FOREIGN KEY (user_id) REFERENCES users(user_id),
-				FOREIGN KEY (plan_id) REFERENCES plans(plan_id),
-
 				UNIQUE (user_id, channel_id)
 			);
 		""")			
@@ -198,6 +194,74 @@ def init_db():
 		""")
 
 		conn.commit()
+		
+		# Seed plans
+		seed_plans(conn)
+
+
+
+# --------------------------------------------------
+# Seed plans    
+# --------------------------------------------------
+def seed_plans(conn):
+	plans = [
+		{
+			"plan_id": 0,
+			"name": "free",
+			"daily_limit": 20,
+			"max_subscriptions": 1,
+			"priority": 0,
+			"description": "Free plan",
+			"price_stars": None,
+		},
+		{
+			"plan_id": 1,
+			"name": "pro",
+			"daily_limit": 50,
+			"max_subscriptions": 10,
+			"priority": 10,
+			"description": "Pro plan",
+			"price_stars": 499,
+		},
+		{
+			"plan_id": 2,
+			"name": "premium",
+			"daily_limit": 999999,  # unlimited
+			"max_subscriptions": 0, # unlimited
+			"priority": 100,
+			"description": "Premium plan",
+			"price_stars": 999,
+		},
+	]
+
+	for p in plans:
+		cur = conn.execute(
+			"SELECT plan_id FROM plans WHERE plan_id = ?",
+			(p["plan_id"],)
+		)
+		if cur.fetchone() is None:
+			conn.execute("""
+				INSERT INTO plans (
+					plan_id,
+					name,
+					daily_limit,
+					max_subscriptions,
+					priority,
+					description,
+					price_stars
+				)
+				VALUES (?, ?, ?, ?, ?, ?, ?)
+			""", (
+				p["plan_id"],
+				p["name"],
+				p["daily_limit"],
+				p["max_subscriptions"],
+				p["priority"],
+				p["description"],
+				p["price_stars"],
+			))
+
+	conn.commit()
 
 
 
@@ -222,11 +286,10 @@ def register_user(user) -> None:
 					registered_at,
 					last_seen,
 					downloads_count,
-					subscriptions_count,
 					last_video_at,
 					plan_id
 				)
-				VALUES (?, ?, ?, ?, ?, ?, 0, 0, NULL, 0)
+				VALUES (?, ?, ?, ?, ?, ?, 0, NULL, 0)
 			""", (
 				user.id,
 				user.username,
