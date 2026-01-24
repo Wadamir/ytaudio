@@ -4,7 +4,7 @@ import asyncio
 from typing import Dict
 
 from telegram import Bot
-from i18n.helpers import tr_user
+from bot.i18n.helpers import tr_user
 
 
 log = logging.getLogger(__name__)
