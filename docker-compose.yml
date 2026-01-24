@@ -10,6 +10,8 @@ services:
       - ./storage/db:/storage/db
     networks:
       - ytaudio_net
+    environment:
+      - PYTHONPATH=/app
 
   nginx:
     image: nginx:alpine
