@@ -9,16 +9,11 @@ DOWNLOAD_WORKERS = 2
 download_queue: asyncio.Queue = asyncio.Queue()
 
 
-async def download_worker(worker_id: int, bot: Bot):
-	logging.info(f"[worker {worker_id}] started")
-
+async def download_worker(worker_id: int, bot):
 	while True:
 		job = await download_queue.get()
 		try:
-			logging.info(f"[worker {worker_id}] processing job {job.get('job_id')}")
 			await process_job(job, bot)
-		except Exception:
-			logging.exception(f"[worker {worker_id}] job failed")
 		finally:
 			download_queue.task_done()
 

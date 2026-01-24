@@ -19,11 +19,10 @@ AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 async def process_job(job: Dict, bot: Bot):
 	logger.info("[downloader] received job")
 
-	user_id: int = job["user_id"]
-	chat_id: int = job["chat_id"]
-	message_id: int = job["message_id"]
-	url: str = job["url"]
-	bot: Bot = job["bot"]
+	user = job["user"]
+	url = job["url"]
+	chat_id = job["chat_id"]
+	message_id = job["message_id"]
 
 	tmp_id = uuid.uuid4().hex
 	out_tpl = AUDIO_DIR / f"{tmp_id}.%(ext)s"
@@ -32,7 +31,7 @@ async def process_job(job: Dict, bot: Bot):
 	await bot.edit_message_text(
 		chat_id=chat_id,
 		message_id=message_id,
-		text=tr_user(user_id, "reading_info"),
+		text=tr_user(user.id, "reading_info"),
 	)
 
 	start_ts = asyncio.get_event_loop().time()
@@ -64,11 +63,11 @@ async def process_job(job: Dict, bot: Bot):
 		await bot.edit_message_text(
 			chat_id=chat_id,
 			message_id=message_id,
-			text=tr_user(user_id, "failed_download"),
+			text=tr_user(user.id, "failed_download"),
 		)
 
 		log_download(
-			user_id=user_id,
+			user_id=user.id,
 			video_url=url,
 			video_id=None,
 			video_title=None,
@@ -98,7 +97,7 @@ async def process_job(job: Dict, bot: Bot):
 		await bot.send_audio(
 			chat_id=chat_id,
 			audio=f,
-			caption=tr_user(user_id, "download_ready_caption"),
+			caption=tr_user(user.id, "download_ready_caption"),
 		)
 
 	await bot.edit_message_text(
@@ -107,7 +106,7 @@ async def process_job(job: Dict, bot: Bot):
 		text="✅ Done",
 	)
 
-	increment_downloads(user_id)
+	increment_downloads(user.id)
 
 	log_download(
 		user_id=user_id,
