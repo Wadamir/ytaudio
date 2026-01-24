@@ -3,7 +3,7 @@ from telegram.ext import ApplicationBuilder
 
 from bot.db.db import init_db
 from bot.i18n.validate import validate_translations
-from handlers import register_handlers
+from bot.handlers import register_handlers
 from bot.workers.queue import start_workers
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
