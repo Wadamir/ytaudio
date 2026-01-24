@@ -1,7 +1,8 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timezone
+from utils.time import utc_now_iso, utc_today_iso
+
 
 DB_PATH = Path("/storage/db/bot.sqlite3")
 
@@ -11,21 +12,12 @@ DB_PATH = Path("/storage/db/bot.sqlite3")
 # --------------------------------------------------
 def get_conn():
 	DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-	conn = sqlite3.connect(DB_PATH)
+	conn = sqlite3.connect(
+		DB_PATH,
+		check_same_thread=False
+	)
 	conn.execute("PRAGMA foreign_keys = ON;")
 	return conn
-
-
-
-# --------------------------------------------------
-# Helpers
-# --------------------------------------------------
-def utc_now_iso() -> str:
-	return datetime.now(timezone.utc).isoformat()
-
-
-def utc_today_iso() -> str:
-	return datetime.now(timezone.utc).date().isoformat()
 
 
 
@@ -58,6 +50,8 @@ def init_db():
 				username TEXT,
 				first_name TEXT,
 				last_name TEXT,
+			
+				language TEXT DEFAULT 'en',
 
 				registered_at TEXT NOT NULL,
 				last_seen TEXT NOT NULL,
@@ -259,6 +253,25 @@ def register_user(user) -> None:
 		conn.commit()
 
 
+def set_user_language(user_id: int, lang: str):
+	with get_conn() as conn:
+		conn.execute(
+			"UPDATE users SET language = ? WHERE user_id = ?",
+			(lang, user_id)
+		)
+		conn.commit()
+
+
+def get_user_language(user_id: int) -> str:
+	with get_conn() as conn:
+		cur = conn.execute(
+			"SELECT language FROM users WHERE user_id = ?",
+			(user_id,)
+		)
+		row = cur.fetchone()
+		return row[0] if row and row[0] else "en"
+
+
 def get_total_users() -> int:
 	with get_conn() as conn:
 		cur = conn.execute("SELECT COUNT(*) FROM users")
@@ -273,6 +286,7 @@ def get_users() -> list[dict]:
 				username,
 				first_name,
 				last_name,
+				language,					 
 				registered_at,
 				last_seen,
 				downloads_count,
@@ -287,10 +301,11 @@ def get_users() -> list[dict]:
 				"username": row[1],
 				"first_name": row[2],
 				"last_name": row[3],
-				"registered_at": row[4],
-				"last_seen": row[5],
-				"downloads_count": row[6],
-				"last_video_at": row[7],
+				"language": row[4],
+				"registered_at": row[5],
+				"last_seen": row[6],
+				"downloads_count": row[7],
+				"last_video_at": row[8],
 			})
 		return users
 
