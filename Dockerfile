@@ -3,7 +3,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# System deps (rarely change)
+# System deps
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
     ffmpeg \
@@ -14,14 +14,17 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps (cached)
-COPY bot/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+# Python deps
+COPY bot/requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# App code (changes often)
-COPY bot/ .
+# ⬇️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
+COPY bot /app/bot
 
 # YouTube cookies
 COPY cookies.txt /cookies.txt
 
-CMD ["python", "main.py"]
+ENV PYTHONPATH=/app
+
+# ⬇️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
+CMD ["python", "-m", "bot.main"]
