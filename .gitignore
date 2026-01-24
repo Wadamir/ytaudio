@@ -4,3 +4,5 @@ cookies.txt
 .vscode/settings.json
 /storage/db/*
 /storage/db/bot.sqlite3
+/.vscode/
+/.vscode/*
