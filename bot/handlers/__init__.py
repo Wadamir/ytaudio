@@ -20,4 +20,3 @@ def register_handlers(app: Application):
 
 	app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang_"))
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
