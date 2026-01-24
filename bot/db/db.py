@@ -1,7 +1,8 @@
 import sqlite3
 from pathlib import Path
 from typing import Optional
-from utils.time import utc_now_iso, utc_today_iso
+from bot.utils.time import utc_now_iso, utc_today_iso
+
 
 
 DB_PATH = Path("/storage/db/bot.sqlite3")

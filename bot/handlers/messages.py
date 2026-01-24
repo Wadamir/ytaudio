@@ -2,10 +2,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.db.db import register_user, can_user_download
-from i18n.helpers import tr
-from utils.time import time_until_utc_reset
-from workers.queue import download_queue
-from parsers.registry import is_supported_url
+from bot.i18n.helpers import tr
+from bot.utils.time import time_until_utc_reset
+from bot.workers.queue import download_queue
+from bot.parsers.registry import is_supported_url
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):

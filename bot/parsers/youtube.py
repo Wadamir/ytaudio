@@ -1,5 +1,5 @@
 import re
-from parsers.registry import register_parser
+from bot.parsers.registry import register_parser
 
 YOUTUBE_RE = re.compile(
 	r"(https?://)?(www\.)?(m\.)?(youtube\.com|youtu\.be)/",

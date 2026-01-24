@@ -1,6 +1,6 @@
 import logging
 
-from i18n import ru, en
+from bot.i18n import ru, en
 
 
 LANGS = {

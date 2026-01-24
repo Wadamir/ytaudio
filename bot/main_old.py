@@ -64,9 +64,9 @@ from bot.db.db import (
 	get_failed_downloads_last_24h,
 )
 
-from i18n.service import get_text
-from i18n.validate import validate_translations
-from workers.queue import start_workers
+from bot.i18n.service import get_text
+from bot.i18n.validate import validate_translations
+from bot.workers.queue import start_workers
 
 
 # --------------------------------------------------

@@ -1,5 +1,5 @@
 import logging
-from i18n.service import LANGS, DEFAULT_LANG
+from bot.i18n.service import LANGS, DEFAULT_LANG
 
 def validate_translations():
 	base_texts = LANGS[DEFAULT_LANG]["texts"]

@@ -5,10 +5,10 @@ from bot.db.db import (
 	register_user,
 	can_user_download,
 )
-from i18n.helpers import tr
-from i18n.keyboards import language_keyboard
+from bot.i18n.helpers import tr
+from bot.i18n.keyboards import language_keyboard
 
-from utils.time import time_until_utc_reset
+from bot.utils.time import time_until_utc_reset
 
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

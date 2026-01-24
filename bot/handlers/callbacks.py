@@ -2,8 +2,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from bot.db.db import set_user_language
-from i18n.helpers import tr
-from i18n.service import is_supported_lang
+from bot.i18n.helpers import tr
+from bot.i18n.service import is_supported_lang
 
 
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

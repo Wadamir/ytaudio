@@ -2,9 +2,9 @@ import logging
 from telegram.ext import ApplicationBuilder
 
 from bot.db.db import init_db
-from i18n.validate import validate_translations
+from bot.i18n.validate import validate_translations
 from handlers import register_handlers
-from workers.queue import start_workers
+from bot.workers.queue import start_workers
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 

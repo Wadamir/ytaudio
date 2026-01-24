@@ -2,7 +2,7 @@
 import asyncio
 import logging
 
-from workers.downloader import process_job
+from bot.workers.downloader import process_job
 
 DOWNLOAD_WORKERS = 2
 download_queue: asyncio.Queue = asyncio.Queue()

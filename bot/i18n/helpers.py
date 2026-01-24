@@ -1,6 +1,6 @@
 from telegram.ext import ContextTypes
 from bot.db.db import get_user_language
-from i18n.service import get_text
+from bot.i18n.service import get_text
 
 
 def tr(context: ContextTypes.DEFAULT_TYPE, key: str, **kwargs) -> str:

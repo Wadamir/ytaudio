@@ -1,5 +1,5 @@
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-from i18n.service import LANGS
+from bot.i18n.service import LANGS
 
 
 def language_keyboard() -> InlineKeyboardMarkup:
