@@ -1,13 +1,11 @@
 # bot/workers/downloader.py
 import asyncio
 import logging
-import os
-import subprocess
 import uuid
 from pathlib import Path
 from typing import Dict
 
-from telegram import Bot # type: ignore
+from telegram import Bot  # type: ignore
 
 from bot.db.db import increment_downloads, log_download
 from bot.i18n.helpers import tr_user
@@ -18,14 +16,13 @@ AUDIO_DIR = Path("/storage/audio")
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 
 
-async def process_job(job: Dict):
+async def process_job(job: Dict, bot: Bot):
 	logger.info("[downloader] received job")
 
-	user = job["user"]
-	bot: Bot = job["bot"]
-	url: str = job["url"]
-	message_id: int = job["message_id"]
+	user_id: int = job["user_id"]
 	chat_id: int = job["chat_id"]
+	message_id: int = job["message_id"]
+	url: str = job["url"]
 
 	tmp_id = uuid.uuid4().hex
 	out_tpl = AUDIO_DIR / f"{tmp_id}.%(ext)s"
@@ -34,7 +31,7 @@ async def process_job(job: Dict):
 	await bot.edit_message_text(
 		chat_id=chat_id,
 		message_id=message_id,
-		text=tr_user(user.id, "reading_info"),
+		text=tr_user(user_id, "reading_info"),
 	)
 
 	start_ts = asyncio.get_event_loop().time()
@@ -66,11 +63,11 @@ async def process_job(job: Dict):
 		await bot.edit_message_text(
 			chat_id=chat_id,
 			message_id=message_id,
-			text=tr_user(user.id, "failed_download"),
+			text=tr_user(user_id, "failed_download"),
 		)
 
 		log_download(
-			user_id=user.id,
+			user_id=user_id,
 			video_url=url,
 			video_id=None,
 			video_title=None,
@@ -96,11 +93,12 @@ async def process_job(job: Dict):
 	processing_ms = int((asyncio.get_event_loop().time() - start_ts) * 1000)
 
 	# --- send audio ---
-	await bot.send_audio(
-		chat_id=chat_id,
-		audio=open(audio_file, "rb"),  # type: ignore
-		caption=tr_user(user.id, "download_ready_caption"),
-	)
+	with open(audio_file, "rb") as f:
+		await bot.send_audio(
+			chat_id=chat_id,
+			audio=f,
+			caption=tr_user(user_id, "download_ready_caption"),
+		)
 
 	await bot.edit_message_text(
 		chat_id=chat_id,
@@ -108,10 +106,10 @@ async def process_job(job: Dict):
 		text="✅ Done",
 	)
 
-	increment_downloads(user.id)
+	increment_downloads(user_id)
 
 	log_download(
-		user_id=user.id,
+		user_id=user_id,
 		video_url=url,
 		video_id=None,
 		video_title=None,
