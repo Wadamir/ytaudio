@@ -109,7 +109,7 @@ async def process_job(job: Dict, bot: Bot):
 	increment_downloads(user.id)
 
 	log_download(
-		user_id=user_id,
+		user_id=user.id,
 		video_url=url,
 		video_id=None,
 		video_title=None,

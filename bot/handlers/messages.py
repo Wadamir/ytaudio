@@ -51,9 +51,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	# --- enqueue download job ---
 	await download_queue.put({
-		"user": user,                      # telegram.User (for i18n, etc.)
-		"user_id": user.id,                # int
-		"chat_id": chat.id,                # int
-		"message_id": status_msg.message_id,  # int
-		"url": url,                        # str
+		"user": user,                           # telegram.User (for i18n, etc.)
+		"url": url,                             # str		
+		"chat_id": chat.id,                     # int
+		"message_id": status_msg.message_id,    # int
 	})

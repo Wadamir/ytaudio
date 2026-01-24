@@ -1,7 +1,7 @@
 # bot/workers/queue.py
 import asyncio
 import logging
-from telegram import Bot
+from telegram import Bot # type: ignore
 
 from bot.workers.downloader import process_job
 
