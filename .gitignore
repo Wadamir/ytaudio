@@ -6,3 +6,5 @@ cookies.txt
 /storage/db/bot.sqlite3
 /.vscode/
 /.vscode/*
+/bot/_legacy/
+/bot/_legacy/*
