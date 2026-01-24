@@ -9,12 +9,17 @@ from bot.parsers.registry import is_supported_url
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+	# --- basic guards ---
 	if not update.message or not update.message.text:
 		return
 
 	user = update.effective_user
+	chat = update.effective_chat
+
+	# --- register / update user ---
 	register_user(user)
 
+	# --- check plan limits ---
 	allowed, used, limit, plan = can_user_download(user.id)
 	if not allowed:
 		await update.message.reply_text(
@@ -30,27 +35,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 		return
 
+	# --- parse URL ---
 	url = update.message.text.strip()
 
 	if not is_supported_url(url):
 		await update.message.reply_text(
-			tr(
-				context, 
-				"invalid_link"
-			)
+			tr(context, "invalid_link")
 		)
 		return
 
+	# --- notify user that job is queued ---
 	status_msg = await update.message.reply_text(
-		tr(
-			context, 
-			"queue"
-		)
+		tr(context, "queue")
 	)
 
+	# --- enqueue download job ---
 	await download_queue.put({
-		"user": user,
-		"url": url,
-		"status_msg": status_msg,
-		"application": context.application,
+		"user": user,                      # telegram.User (for i18n, etc.)
+		"user_id": user.id,                # int
+		"chat_id": chat.id,                # int
+		"message_id": status_msg.message_id,  # int
+		"url": url,                        # str
 	})
