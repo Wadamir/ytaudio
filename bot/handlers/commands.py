@@ -1,8 +1,8 @@
 from telegram import Update
 from telegram.ext import ContextTypes
 
-from bot.main import build_admin_stats_text
-from bot.main import ADMIN_USER_ID
+# from bot.main import build_admin_stats_text
+# from bot.main import ADMIN_USER_ID
 
 from bot.db.db import (
 	register_user,
@@ -53,12 +53,12 @@ async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 
-async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	if update.effective_user.id != ADMIN_USER_ID:
-		return
+# async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 	if update.effective_user.id != ADMIN_USER_ID:
+# 		return
 
-	await update.message.reply_text(
-		build_admin_stats_text(),
-		parse_mode="HTML",
-		disable_web_page_preview=True,
-	)
+# 	await update.message.reply_text(
+# 		build_admin_stats_text(),
+# 		parse_mode="HTML",
+# 		disable_web_page_preview=True,
+# 	)
