@@ -1,6 +1,5 @@
 import os
 import uuid
-import logging
 import time
 import shutil
 import re
@@ -9,7 +8,6 @@ import random
 import logging
 import sqlite3
 import aiohttp
-import logging
 
 from PIL import Image
 from pathlib import Path
