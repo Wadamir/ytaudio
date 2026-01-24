@@ -686,6 +686,27 @@ def log_youtube_error(
 		conn.commit()	
 
 
+def count_today_youtube_errors(error_type: str | None = None) -> int:
+	today = utc_today_iso()
+
+	with get_conn() as conn:
+		if error_type:
+			cur = conn.execute("""
+				SELECT COUNT(*)
+				FROM youtube_errors
+				WHERE DATE(created_at) = ?
+					AND error_type = ?
+			""", (today, error_type))
+		else:
+			cur = conn.execute("""
+				SELECT COUNT(*)
+				FROM youtube_errors
+				WHERE DATE(created_at) = ?
+			""", (today,))
+
+		return cur.fetchone()[0]
+
+
 def get_youtube_errors_today(error_type: str) -> list[dict]:
 	today = utc_today_iso()
 
