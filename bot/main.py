@@ -13,7 +13,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 async def post_init(app):
-	await start_workers()
+	await start_workers(app.bot)
 
 
 def main():
