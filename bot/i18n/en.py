@@ -58,13 +58,13 @@ TEXTS = {
     ),
 
     "audio_ready_caption": (
-        "\n\n{bot_caption} <b>{bot_username}</b>"
+        "\n\n{bot_caption_prefix} <b>{bot_username}</b>"
     ),
 
     "link_created_caption": (
         "✅ <b>Your download link is ready</b>\n\n"
         "🎵 <a href=\"{link}\">{filename}</a>\n\n"
         "⏰ Available for 12 hours\n\n"
-        "{bot_caption} <b>{bot_username}</b>"
+        "{bot_caption_prefix} <b>{bot_username}</b>"
     ),
 }
