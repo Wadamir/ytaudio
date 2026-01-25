@@ -1,5 +1,5 @@
-from telegram import Update
-from telegram.ext import ContextTypes
+from telegram import Update # type: ignore
+from telegram.ext import ContextTypes # type: ignore
 
 from bot.db.db import register_user, can_user_download
 from bot.i18n.helpers import tr
