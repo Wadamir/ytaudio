@@ -3,8 +3,9 @@ import asyncio
 import logging
 import uuid
 import yt_dlp # type: ignore
+import math
 
-from typing import Literal
+from typing import Literal, Iterable
 from dataclasses import dataclass
 
 from pathlib import Path
@@ -114,306 +115,303 @@ async def ytdlp_download_with_retry(url: str, opts: dict):
 
 	raise last_exc
 
+async def split_audio_by_time(
+	src: Path,
+	out_dir: Path,
+	part_duration: float,
+	total_parts: int,
+	prefix: str,
+	ext: str,
+):
+	parts = []
+
+	for i in range(total_parts):
+		out_file = out_dir / f"{prefix}_part{i + 1}.{ext}"
+		start = i * part_duration
+
+		cmd = [
+			"ffmpeg",
+			"-y",
+			"-i", str(src),
+			"-ss", str(start),
+			"-t", str(part_duration),
+			"-vn",
+			"-acodec", "libmp3lame",
+			"-ab", f"{AUDIO_BITRATE_PREFERRED}k",
+			str(out_file),
+		]
+
+		proc = await asyncio.create_subprocess_exec(
+			*cmd,
+			stdout=asyncio.subprocess.DEVNULL,
+			stderr=asyncio.subprocess.PIPE,
+		)
+
+		_, stderr = await proc.communicate()
+		if proc.returncode != 0:
+			raise RuntimeError(stderr.decode("utf-8", errors="ignore"))
+
+		parts.append(out_file)
+
+	return parts
+
+def cleanup_files(paths: Iterable[Path | None]):
+	for p in paths:
+		if not p:
+			continue
+		try:
+			p.unlink(missing_ok=True)
+			logger.debug(f"[downloader] cleaned up {p}")
+		except Exception as e:
+			logger.warning(f"[downloader] failed to cleanup {p}: {e}")
+
+
 
 async def process_job(job: Dict, bot: Bot):
 	logger.info("[downloader] received job")
 
-	user_id: int = job["user_id"]
-	chat_id: int = job["chat_id"]
-	message_id: int = job["message_id"]
-	url: str = job["url"]
-
-	tmp_id = uuid.uuid4().hex
-
-	info = None
-
-	# notify user
 	try:
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, "reading_info"),
-		)
-	except TelegramError as e:
-		logger.warning(f"[downloader] notify failed: {e}")
-	except Exception as e:
-		logger.exception("[downloader] unexpected error during notify")
+		user_id: int = job["user_id"]
+		chat_id: int = job["chat_id"]
+		message_id: int = job["message_id"]
+		url: str = job["url"]
 
-	start_ts = asyncio.get_event_loop().time()
+		tmp_files: list[Path] = []
 
-	try:
-		opts = ydl_base_opts()
-		opts["skip_download"] = True
+		tmp_id = uuid.uuid4().hex
 
-		info = await asyncio.to_thread(
-			lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
-		)
-		logger.debug(f"[downloader] video info: {info}")
-	except Exception as e:
-		logger.exception("[downloader] failed reading video info")
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, "failed_reading_info"),
-		)
-		return
-	
-	if info.get("is_live"):
-		logger.warning("[downloader] live streams are not supported")
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, "live_stream_not_supported"),
-		)
-		return
-	
-	duration = info.get("duration")
-	if not isinstance(duration, int):
-		duration = None
-	
-	if duration and duration > MAX_DURATION_SECONDS:
-		logger.warning("[downloader] video duration exceeds limit")
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, "duration_exceeds_limit").format(max_duration=MAX_DURATION_SECONDS),
-		)
-		return
-	
-	mode = "fast_mode" if can_use_fast_mode(info) else "slow_mode"
+		info = None
 
-	plan = DownloadPlan(
-		tmp_id=tmp_id,
-		mode=mode,
-		title=info.get("title", "audio"),
-		uploader=info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube",
-		bitrate=AUDIO_BITRATE_PREFERRED,
-		out_dir=AUDIO_DIR,
-	)
-
-	if plan.mode == "fast_mode":
-		opts = ydl_fast_mode_opts(plan)
-	else:
-		opts = ydl_slow_mode_opts(plan)
-	
-	#notify user about download start
-	try:
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, plan.mode, duration=format_duration(duration)),
-		)
-	except TelegramError as e:
-		logger.warning(f"[downloader] notify failed: {e}")
-	except Exception as e:
-		logger.exception("[downloader] unexpected error during notify")				
-
-
-
-	# download audio
-	try:
-		await ytdlp_download_with_retry(
-			url=url,
-			opts=opts(plan) if callable(opts) else opts,
-		)
-
-		files = list(AUDIO_DIR.glob(f"{tmp_id}.*"))
-		if not files:
-			raise RuntimeError("yt-dlp finished but no files found")
-		
-		tmp_path = files[0]
-
-		real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024 , 2)
-		logger.debug(f"[downloader] downloaded file size: {format_size_mb(real_size_mb)}")
-
-	except Exception as e:
-		logger.exception("[downloader] failed downloading audio")
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, "failed_download"),
-		)
-		log_download(
-			user_id=user_id,
-			video_url=url,
-			video_id=None,
-			video_title=None,
-			duration_seconds=None,
-			chosen_bitrate=plan.bitrate,
-			estimated_size_mb=None,
-			real_size_mb=None,
-			processing_mode="yt-dlp",
-			processing_time_ms=None,
-			delivery_method="failed",
-			status="failed",
-			error_message=str(e)[:500],
-		)
-		return
-	
-
-
-	# Telegram send audio
-	if real_size_mb <= TELEGRAM_MAX_FILESIZE_MB:
+		# notify user
 		try:
-			with open(tmp_path, "rb") as audio_f:
-				await bot.send_audio(
-					chat_id=chat_id,
-					audio=audio_f,
-					filename=safe_filename(plan.title, max_len=MAX_FILENAME_LENGTH) + f".{AUDIO_FORMAT_PREFERRED}",
-					title=plan.title,
-					performer=plan.uploader,
-					duration=info.get("duration"),
-					caption=tr_user(user_id, "audio_ready_caption"),
-					parse_mode="HTML",
-				)
-		except Exception as e:
-			logger.exception("[downloader] failed sending audio via Telegram")
 			await bot.edit_message_text(
 				chat_id=chat_id,
 				message_id=message_id,
-				text=tr_user(user_id, "failed_sending_audio"),
+				text=tr_user(user_id, "reading_info"),
+			)
+		except TelegramError as e:
+			logger.warning(f"[downloader] notify failed: {e}")
+		except Exception as e:
+			logger.exception("[downloader] unexpected error during notify")
+
+		start_ts = asyncio.get_event_loop().time()
+
+		try:
+			opts = ydl_base_opts()
+			opts["skip_download"] = True
+
+			info = await asyncio.to_thread(
+				lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+			)
+			logger.debug(f"[downloader] video info: {info}")
+		except Exception as e:
+			logger.exception("[downloader] failed reading video info")
+			await bot.edit_message_text(
+				chat_id=chat_id,
+				message_id=message_id,
+				text=tr_user(user_id, "failed_reading_info"),
+			)
+			return
+		
+		if info.get("is_live"):
+			logger.warning("[downloader] live streams are not supported")
+			await bot.edit_message_text(
+				chat_id=chat_id,
+				message_id=message_id,
+				text=tr_user(user_id, "live_stream_not_supported"),
+			)
+			return
+		
+		duration = info.get("duration")
+		if not isinstance(duration, int):
+			duration = None
+		
+		if duration and duration > MAX_DURATION_SECONDS:
+			logger.warning("[downloader] video duration exceeds limit")
+			await bot.edit_message_text(
+				chat_id=chat_id,
+				message_id=message_id,
+				text=tr_user(user_id, "duration_exceeds_limit").format(max_duration=MAX_DURATION_SECONDS),
+			)
+			return
+		
+		mode = "fast_mode" if can_use_fast_mode(info) else "slow_mode"
+
+		plan = DownloadPlan(
+			tmp_id=tmp_id,
+			mode=mode,
+			title=info.get("title", "audio"),
+			uploader=info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube",
+			bitrate=AUDIO_BITRATE_PREFERRED,
+			out_dir=AUDIO_DIR,
+		)
+
+		if plan.mode == "fast_mode":
+			opts = ydl_fast_mode_opts(plan)
+		else:
+			opts = ydl_slow_mode_opts(plan)
+		
+		#notify user about download start
+		try:
+			await bot.edit_message_text(
+				chat_id=chat_id,
+				message_id=message_id,
+				text=tr_user(user_id, plan.mode, duration=format_duration(duration)),
+			)
+		except TelegramError as e:
+			logger.warning(f"[downloader] notify failed: {e}")
+		except Exception as e:
+			logger.exception("[downloader] unexpected error during notify")				
+
+
+
+		# download audio
+		try:
+			await ytdlp_download_with_retry(
+				url=url,
+				opts=opts,
+			)
+
+			files = list(AUDIO_DIR.glob(f"{tmp_id}.*"))
+			if not files:
+				raise RuntimeError("yt-dlp finished but no files found")
+			
+			tmp_path = files[0]
+			tmp_files.append(tmp_path)
+
+			real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024 , 2)
+			logger.debug(f"[downloader] downloaded file size: {format_size_mb(real_size_mb)}")
+
+		except Exception as e:
+			logger.exception("[downloader] failed downloading audio")
+			await bot.edit_message_text(
+				chat_id=chat_id,
+				message_id=message_id,
+				text=tr_user(user_id, "failed_download"),
 			)
 			log_download(
 				user_id=user_id,
 				video_url=url,
 				video_id=None,
-				video_title=plan.title,
-				duration_seconds=info.get("duration"),
+				video_title=None,
+				duration_seconds=None,
 				chosen_bitrate=plan.bitrate,
 				estimated_size_mb=None,
-				real_size_mb=format_size_mb(real_size_mb),
+				real_size_mb=None,
 				processing_mode="yt-dlp",
 				processing_time_ms=None,
-				delivery_method="telegram",
+				delivery_method="failed",
 				status="failed",
 				error_message=str(e)[:500],
 			)
 			return
+		
 
 
+		# Telegram send audio
+		if real_size_mb <= TELEGRAM_MAX_FILESIZE_MB:
+			try:
+				with open(tmp_path, "rb") as audio_f:
+					await bot.send_audio(
+						chat_id=chat_id,
+						audio=audio_f,
+						filename=safe_filename(plan.title, max_len=MAX_FILENAME_LENGTH) + f".{AUDIO_FORMAT_PREFERRED}",
+						title=plan.title,
+						performer=plan.uploader,
+						duration=info.get("duration"),
+						caption=tr_user(user_id, "audio_ready_caption"),
+						parse_mode="HTML",
+					)
+			except Exception as e:
+				logger.exception("[downloader] failed sending audio via Telegram")
+				await bot.edit_message_text(
+					chat_id=chat_id,
+					message_id=message_id,
+					text=tr_user(user_id, "failed_sending_audio"),
+				)
+				log_download(
+					user_id=user_id,
+					video_url=url,
+					video_id=None,
+					video_title=plan.title,
+					duration_seconds=info.get("duration"),
+					chosen_bitrate=plan.bitrate,
+					estimated_size_mb=None,
+					real_size_mb=format_size_mb(real_size_mb),
+					processing_mode="yt-dlp",
+					processing_time_ms=None,
+					delivery_method="telegram",
+					status="failed",
+					error_message=str(e)[:500],
+				)
+				return
+		else:
+			part_size_mb = TELEGRAM_MAX_FILESIZE_MB - 5
+			total_parts = math.ceil(real_size_mb / part_size_mb)
 
-	# temporary exit after Telegram send
-	logger.info("[downloader] audio sent via Telegram")
-	return
+			if not duration:
+				raise RuntimeError("Cannot split audio without duration")
 
-	
-	# # --- legacy: subprocess yt-dlp ---
+			part_duration = duration / total_parts
 
-	# cmd = [
-	# 	"yt-dlp",
-	# 	"-f", "bestaudio",
-	# 	"--extract-audio",
-	# 	"--audio-format", "mp3",
-	# 	"--audio-quality", "192K",
-	# 	"--no-playlist",
-	# 	"--write-info-json",
-	# 	"--cookies", "/cookies.txt",
-	# 	"-o", str(out_tpl),
-	# 	url,
-	# ]	
+			try:
+				parts = await split_audio_by_time(
+					src=tmp_path,
+					out_dir=AUDIO_DIR,
+					part_duration=part_duration,
+					total_parts=total_parts,
+					prefix=f"{plan.tmp_id}_{safe_filename(plan.title, MAX_FILENAME_LENGTH)}",
+					ext=AUDIO_FORMAT_PREFERRED,
+				)
+				tmp_files.extend(parts)
 
-	# proc = await asyncio.create_subprocess_exec(
-	# 	*cmd,
-	# 	stdout=asyncio.subprocess.PIPE,
-	# 	stderr=asyncio.subprocess.PIPE,
-	# )
+				for p in parts:
+					size_mb = p.stat().st_size / 1024 / 1024
+					if size_mb > TELEGRAM_MAX_FILESIZE_MB:
+						raise RuntimeError(
+							f"Split part exceeds Telegram limit: {size_mb:.2f} MB"
+						)				
 
-	# stdout, stderr = await proc.communicate()
+				for idx, part_path in enumerate(parts, start=1):
+					with open(part_path, "rb") as audio_f:
+						await bot.send_audio(
+							chat_id=chat_id,
+							audio=audio_f,
+							filename=part_path.name,
+							title=f"{plan.title} (Part {idx}/{total_parts})",
+							performer=plan.uploader,
+							duration=int(part_duration) if part_duration else None,
+							caption=tr_user(user_id, "audio_ready_caption"),
+						)
+						await asyncio.sleep(0.7)  # to avoid hitting Telegram limits
 
-	# if proc.returncode != 0:
-	# 	err = stderr.decode("utf-8", errors="ignore")
+			except Exception as e:
+				logger.exception("[downloader] failed sending split audio via Telegram")
+				await bot.edit_message_text(
+					chat_id=chat_id,
+					message_id=message_id,
+					text=tr_user(user_id, "failed_sending_audio"),
+				)
+				log_download(
+					user_id=user_id,
+					video_url=url,
+					video_id=None,
+					video_title=plan.title,
+					duration_seconds=info.get("duration"),
+					chosen_bitrate=plan.bitrate,
+					estimated_size_mb=None,
+					real_size_mb=format_size_mb(real_size_mb),
+					processing_mode="yt-dlp",
+					processing_time_ms=None,
+					delivery_method="telegram",
+					status="failed",
+					error_message=str(e)[:500],
+				)
+				return
 
-	# 	await bot.edit_message_text(
-	# 		chat_id=chat_id,
-	# 		message_id=message_id,
-	# 		text=tr_user(user_id, "failed_download"),
-	# 	)
+	finally:
+		cleanup_files(tmp_files)
 
-	# 	log_download(
-	# 		user_id=user_id,
-	# 		video_url=url,
-	# 		video_id=None,
-	# 		video_title=None,
-	# 		duration_seconds=None,
-	# 		chosen_bitrate=192,
-	# 		estimated_size_mb=None,
-	# 		real_size_mb=None,
-	# 		processing_mode="yt-dlp",
-	# 		processing_time_ms=None,
-	# 		delivery_method="failed",
-	# 		status="failed",
-	# 		error_message=err[:500],
-	# 	)
-	# 	return
-
-	# parse metadata
-	# lines = stdout.decode("utf-8", errors="ignore").splitlines()
-	# title = lines[0] if len(lines) > 0 else "audio"
-	# duration_seconds = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else None
-	# file_info = list(AUDIO_DIR.glob(f"{tmp_id}.info.json"))
-	# if not file_info:
-	# 	raise RuntimeError("yt-dlp finished but info.json not found")
-	
-	# with open(file_info[0], "r", encoding="utf-8") as f:
-	# 	info = json.load(f)
-
-	# logger.debug(f"[downloader] yt-dlp info: {info}")
-
-	# title = info.get("title", "audio")
-	# author = info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube"
-	# duration_seconds = info.get("duration")
-	# if not isinstance(duration_seconds, int):
-	# 	duration_seconds = None
-
-
-	# filename = f"{safe_filename(title)}.mp3"
-
-	# # find file
-	# files = list(AUDIO_DIR.glob(f"{tmp_id}.*"))
-	# if not files:
-	# 	raise RuntimeError("yt-dlp finished but file not found")
-
-	# audio_file = files[0]
-	# size_mb = audio_file.stat().st_size / 1024 / 1024
-	# processing_ms = int((asyncio.get_event_loop().time() - start_ts) * 1000)
-
-	# file_link = f"https://example.com/downloads/{audio_file.name}"
-
-	# send audio
-	with open(audio_file, "rb") as f:
-		await bot.send_audio(
-			chat_id=chat_id,
-			audio=f,
-			filename=filename,
-			title=title,
-			performer=author,
-			duration=duration_seconds,
-			caption=tr_user(user_id, "audio_ready_caption"),
-			parse_mode="HTML",
-		)
-
-	await bot.edit_message_text(
-		chat_id=chat_id,
-		message_id=message_id,
-		text="✅ Done",
-	)
-
-	increment_downloads(user_id)
-
-	log_download(
-		user_id=user_id,
-		video_url=url,
-		video_id=None,
-		video_title=title,
-		duration_seconds=duration_seconds,
-		chosen_bitrate=192,
-		estimated_size_mb=None,
-		real_size_mb=round(size_mb, 2),
-		processing_mode="yt-dlp",
-		processing_time_ms=processing_ms,
-		delivery_method="telegram",
-		status="success",
-		file_path=str(audio_file),
-	)
-
-	logger.info("[downloader] job finished successfully")
+		# temporary exit after Telegram send
+		logger.info("[downloader] audio sent via Telegram")
+		return
