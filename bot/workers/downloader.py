@@ -128,6 +128,7 @@ async def process_job(job: Dict, bot: Bot):
 			audio=f,
 			filename=filename,
 			caption=tr_user(user_id, "audio_ready_caption"),
+			parse_mode="HTML",
 		)
 
 	await bot.edit_message_text(
