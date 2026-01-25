@@ -20,6 +20,7 @@ from bot.i18n.helpers import tr_user
 from bot.config.downloader import (
 	AUDIO_DIR,
 	AUDIO_FORMAT_PREFERRED,	
+	AUDIO_BITRATE_PREFERRED,
 	AUDIO_BITRATE_PREFERRED_ARG,
 	MAX_FILENAME_LENGTH,
 	YTDLP_RETRIES,
@@ -95,20 +96,21 @@ def can_use_fast_mode(info: Dict) -> bool:
 			return True
 	return False
 
-async def ytdlp_download_with_retry(
-	url: str,
-	opts: dict,
-):
+async def ytdlp_download_with_retry(url: str, opts: dict):
+	last_exc = None
+
 	for attempt in range(1, YTDLP_RETRIES + 1):
 		try:
 			return await asyncio.to_thread(
 				lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
 			)
-
 		except Exception as e:
-			logger.warning(f"[downloader] yt-dlp attempt {attempt} failed: {e}")
-			# --- fatal or retries exhausted ---
-			raise
+			last_exc = e
+			logger.warning(
+				f"[downloader] yt-dlp attempt {attempt}/{YTDLP_RETRIES} failed: {e}"
+			)
+
+	raise last_exc
 
 
 def safe_filename(text: str) -> str:
@@ -128,7 +130,6 @@ async def process_job(job: Dict, bot: Bot):
 	url: str = job["url"]
 
 	tmp_id = uuid.uuid4().hex
-	out_tpl = AUDIO_DIR / f"{tmp_id}.%(ext)s"
 
 	info = None
 
@@ -172,7 +173,11 @@ async def process_job(job: Dict, bot: Bot):
 		)
 		return
 	
-	if info.get("duration") and info["duration"] > MAX_DURATION_SECONDS:
+	duration = info.get("duration")
+	if not isinstance(duration, int):
+		duration = None
+	
+	if duration and duration > MAX_DURATION_SECONDS:
 		logger.warning("[downloader] video duration exceeds limit")
 		await bot.edit_message_text(
 			chat_id=chat_id,
@@ -188,29 +193,18 @@ async def process_job(job: Dict, bot: Bot):
 		mode=mode,
 		title=info.get("title", "audio"),
 		uploader=info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube",
-		bitrate=AUDIO_BITRATE_PREFERRED_ARG,
+		bitrate=AUDIO_BITRATE_PREFERRED,
 		out_dir=AUDIO_DIR,
 	)
 
-	opts = (
-		ydl_fast_audio_opts
-		if plan.mode == "fast_audio"
-		else ydl_slow_audio_opts(plan)
-	)
+	if plan.mode == "fast_audio":
+		opts = ydl_fast_audio_opts(plan)
+	else:
+		opts = ydl_slow_audio_opts(plan)
+
 
 
 	# download audio
-	try:
-		await bot.edit_message_text(
-			chat_id=chat_id,
-			message_id=message_id,
-			text=tr_user(user_id, "downloading_audio"),
-		)
-	except TelegramError as e:
-		logger.warning(f"[downloader] notify failed: {e}")
-	except Exception as e:
-		logger.exception("[downloader] unexpected error during notify")
-
 	try:
 		await ytdlp_download_with_retry(
 			url=url,
@@ -225,6 +219,16 @@ async def process_job(job: Dict, bot: Bot):
 
 		real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024 , 2)
 		logger.debug(f"[downloader] downloaded file size: {real_size_mb} MB")
+		try:
+			await bot.edit_message_text(
+				chat_id=chat_id,
+				message_id=message_id,
+				text=tr_user(user_id, plan.mode, size_mb=real_size_mb),
+			)
+		except TelegramError as e:
+			logger.warning(f"[downloader] notify failed: {e}")
+		except Exception as e:
+			logger.exception("[downloader] unexpected error during notify")		
 
 	except Exception as e:
 		logger.exception("[downloader] failed downloading audio")
