@@ -52,7 +52,7 @@ async def process_job(job: Dict, bot: Bot):
 		"--audio-format", "mp3",
 		"--audio-quality", "192K",
 		"--no-playlist",
-		"--dump-single-json",
+		"--write-info-json",
 		"--cookies", "/cookies.txt",
 		"-o", str(out_tpl),
 		url,
@@ -96,7 +96,13 @@ async def process_job(job: Dict, bot: Bot):
 	# lines = stdout.decode("utf-8", errors="ignore").splitlines()
 	# title = lines[0] if len(lines) > 0 else "audio"
 	# duration_seconds = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else None
-	info = json.loads(stdout.decode("utf-8"))
+	file_info = list(AUDIO_DIR.glob(f"{tmp_id}.info.json"))
+	if not file_info:
+		raise RuntimeError("yt-dlp finished but info.json not found")
+	
+	with open(file_info[0], "r", encoding="utf-8") as f:
+		info = json.load(f)
+
 	logger.debug(f"[downloader] yt-dlp info: {info}")
 
 	title = info.get("title", "audio")
