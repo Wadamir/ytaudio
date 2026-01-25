@@ -1,6 +1,5 @@
 # bot/utils/format.py
 from typing import Optional
-import re
 
 
 def format_duration(seconds: Optional[int]) -> str:
@@ -15,23 +14,7 @@ def format_duration(seconds: Optional[int]) -> str:
 
 	return f"{minutes:02d} min"
 
-
 def format_size_mb(size_mb: Optional[float]) -> str:
 	if size_mb is None:
 		return "—"
 	return f"{size_mb:.1f} MB"
-
-
-def safe_filename(text: str, max_len: int = 150) -> str:
-	text = re.sub(r'[\\/*?:"<>|]', "", text)
-	text = re.sub(r"\s+", " ", text).strip()
-	return text[:max_len]
-
-
-def sanitize_text_field(text: str, max_len: int) -> str:
-	if not text:
-		return ""
-
-	text = text.strip()
-	text = re.sub(r"\s+", " ", text)
-	return text[:max_len]

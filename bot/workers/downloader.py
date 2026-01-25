@@ -2,7 +2,6 @@ import re
 import asyncio
 import logging
 import uuid
-import json
 import yt_dlp # type: ignore
 
 from typing import Literal
@@ -13,6 +12,9 @@ from typing import Dict
 
 from telegram import Bot  # type: ignore
 from telegram.error import TelegramError  # type: ignore
+
+from bot.utils.format import format_duration, format_size_mb
+from bot.utils.text import safe_filename, sanitize_text_field
 
 from bot.db.db import increment_downloads, log_download
 from bot.i18n.helpers import tr_user
@@ -113,14 +115,6 @@ async def ytdlp_download_with_retry(url: str, opts: dict):
 	raise last_exc
 
 
-def safe_filename(text: str) -> str:
-	text = text.strip()
-	text = re.sub(r"[^\w\s.-]", "", text, flags=re.UNICODE)
-	text = re.sub(r"\s+", "_", text)
-	return text[:MAX_FILENAME_LENGTH] or "audio"
-
-
-
 async def process_job(job: Dict, bot: Bot):
 	logger.info("[downloader] received job")
 
@@ -201,6 +195,18 @@ async def process_job(job: Dict, bot: Bot):
 		opts = ydl_fast_mode_opts(plan)
 	else:
 		opts = ydl_slow_mode_opts(plan)
+	
+	#notify user about download start
+	try:
+		await bot.edit_message_text(
+			chat_id=chat_id,
+			message_id=message_id,
+			text=tr_user(user_id, plan.mode, duration=format_duration(duration)),
+		)
+	except TelegramError as e:
+		logger.warning(f"[downloader] notify failed: {e}")
+	except Exception as e:
+		logger.exception("[downloader] unexpected error during notify")				
 
 
 
@@ -218,17 +224,7 @@ async def process_job(job: Dict, bot: Bot):
 		tmp_path = files[0]
 
 		real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024 , 2)
-		logger.debug(f"[downloader] downloaded file size: {real_size_mb} MB")
-		try:
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, plan.mode, size_mb=real_size_mb),
-			)
-		except TelegramError as e:
-			logger.warning(f"[downloader] notify failed: {e}")
-		except Exception as e:
-			logger.exception("[downloader] unexpected error during notify")		
+		logger.debug(f"[downloader] downloaded file size: {format_size_mb(real_size_mb)}")
 
 	except Exception as e:
 		logger.exception("[downloader] failed downloading audio")
@@ -263,7 +259,7 @@ async def process_job(job: Dict, bot: Bot):
 				await bot.send_audio(
 					chat_id=chat_id,
 					audio=audio_f,
-					filename=safe_filename(plan.title) + f".{AUDIO_FORMAT_PREFERRED}",
+					filename=safe_filename(plan.title, max_len=MAX_FILENAME_LENGTH) + f".{AUDIO_FORMAT_PREFERRED}",
 					title=plan.title,
 					performer=plan.uploader,
 					duration=info.get("duration"),
@@ -285,7 +281,7 @@ async def process_job(job: Dict, bot: Bot):
 				duration_seconds=info.get("duration"),
 				chosen_bitrate=plan.bitrate,
 				estimated_size_mb=None,
-				real_size_mb=real_size_mb,
+				real_size_mb=format_size_mb(real_size_mb),
 				processing_mode="yt-dlp",
 				processing_time_ms=None,
 				delivery_method="telegram",

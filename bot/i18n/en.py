@@ -11,8 +11,8 @@ TEXTS = {
 
     "failed_reading_info": "❌ Failed to read video information.",
 
-	"fast_mode": "⚡ Downloading audio (fast mode) {size_mb:.1f} MB",
-	"slow_mode": "⬇️ Downloading audio (re-encoding) {size_mb:.1f} MB Please be patient...",
+	"fast_mode": "⚡ Downloading audio (fast mode) {duration}...",
+	"slow_mode": "⬇️ Downloading audio (re-encoding) {duration}... Please be patient...",
 
 	"failed_download": "❌ Failed to download audio.",
 	"failed_sending_audio": "❌ Failed to send audio.",
