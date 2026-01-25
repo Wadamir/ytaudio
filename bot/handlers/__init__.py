@@ -1,5 +1,5 @@
-from telegram.ext import Application
-from telegram.ext import (
+from telegram.ext import Application # type: ignore
+from telegram.ext import ( # type: ignore
 	CommandHandler,
 	CallbackQueryHandler,
 	MessageHandler,

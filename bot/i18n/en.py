@@ -57,8 +57,13 @@ TEXTS = {
 		"⏰ Please wait, processing may take some time."
     ),
 
-    "download_ready_caption": (
+    "audio_ready_caption": (
         "✅ <b>Your audio is ready</b>\n\n"
+        "{bot_caption} <b>{bot_username}</b>"
+    ),
+
+    "link_created_caption": (
+        "✅ <b>Your download link is ready</b>\n\n"
         "🎵 <a href=\"{link}\">{filename}</a>\n\n"
         "⏰ Available for 12 hours\n\n"
         "{bot_caption} <b>{bot_username}</b>"
