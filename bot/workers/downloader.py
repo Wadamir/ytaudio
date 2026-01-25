@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class DownloadPlan:
 	tmp_id: str
-	mode: Literal["fast_audio", "slow_audio"]
+	mode: Literal["fast_mode", "slow_mode"]
 	title: str
 	uploader: str
 	bitrate: int
@@ -55,7 +55,7 @@ def ydl_base_opts():
 		"noplaylist": YTDLP_NO_PLAYLIST,
 	}
 
-def ydl_fast_audio_opts(plan: DownloadPlan):
+def ydl_fast_mode_opts(plan: DownloadPlan):
 	return {
 		**ydl_base_opts(),
 		"format": "bestaudio[ext=m4a]/bestaudio",
@@ -63,7 +63,7 @@ def ydl_fast_audio_opts(plan: DownloadPlan):
 		"postprocessors": [],
 	}
 
-def ydl_slow_audio_opts(plan: DownloadPlan):
+def ydl_slow_mode_opts(plan: DownloadPlan):
 	return {
 		**ydl_base_opts(),
 		"format": "bestaudio/best",
@@ -186,7 +186,7 @@ async def process_job(job: Dict, bot: Bot):
 		)
 		return
 	
-	mode = "fast_audio" if can_use_fast_mode(info) else "slow_audio"
+	mode = "fast_mode" if can_use_fast_mode(info) else "slow_mode"
 
 	plan = DownloadPlan(
 		tmp_id=tmp_id,
@@ -197,10 +197,10 @@ async def process_job(job: Dict, bot: Bot):
 		out_dir=AUDIO_DIR,
 	)
 
-	if plan.mode == "fast_audio":
-		opts = ydl_fast_audio_opts(plan)
+	if plan.mode == "fast_mode":
+		opts = ydl_fast_mode_opts(plan)
 	else:
-		opts = ydl_slow_audio_opts(plan)
+		opts = ydl_slow_mode_opts(plan)
 
 
 
