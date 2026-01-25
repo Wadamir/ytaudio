@@ -4,9 +4,9 @@ from bot.i18n.service import get_text
 from bot.config.bot import BOT_USERNAME, BOT_TITLE, BOT_CAPTION_PREFIX
 
 DEFAULT_I18N_CONTEXT = {
-	"BOT_USERNAME": BOT_USERNAME,
-	"BOT_TITLE": BOT_TITLE,
-	"BOT_CAPTION_PREFIX": BOT_CAPTION_PREFIX,
+	"bot_username": BOT_USERNAME,
+	"bot_title": BOT_TITLE,
+	"bot_caption_prefix": BOT_CAPTION_PREFIX,
 }
 
 def tr(context: ContextTypes.DEFAULT_TYPE, key: str, **kwargs) -> str:
