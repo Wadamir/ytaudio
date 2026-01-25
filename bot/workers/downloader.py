@@ -378,10 +378,11 @@ async def process_job(job: Dict, bot: Bot):
 							chat_id=chat_id,
 							audio=audio_f,
 							filename=part_path.name,
-							title=f"{plan.title} (Part {idx}/{total_parts})",
+							title=f"(Part {idx}/{total_parts}) - {plan.title}",
 							performer=plan.uploader,
 							duration=int(part_duration) if part_duration else None,
 							caption=tr_user(user_id, "audio_ready_caption"),
+							parse_mode="HTML",
 						)
 						await asyncio.sleep(0.7)  # to avoid hitting Telegram limits
 
