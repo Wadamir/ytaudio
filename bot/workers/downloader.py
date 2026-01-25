@@ -2,6 +2,8 @@ import re
 import asyncio
 import logging
 import uuid
+import json
+
 from pathlib import Path
 from typing import Dict
 
@@ -50,8 +52,8 @@ async def process_job(job: Dict, bot: Bot):
 		"--audio-format", "mp3",
 		"--audio-quality", "192K",
 		"--no-playlist",
-		"--print", "title",
-		"--print", "duration",
+		# "--print", "title",
+		# "--print", "duration",
 		"--cookies", "/cookies.txt",
 		"-o", str(out_tpl),
 		url,
@@ -92,9 +94,13 @@ async def process_job(job: Dict, bot: Bot):
 		return
 
 	# parse metadata
-	lines = stdout.decode("utf-8", errors="ignore").splitlines()
-	title = lines[0] if len(lines) > 0 else "audio"
-	duration_seconds = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else None
+	# lines = stdout.decode("utf-8", errors="ignore").splitlines()
+	# title = lines[0] if len(lines) > 0 else "audio"
+	# duration_seconds = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else None
+	info = json.loads(stdout.decode("utf-8"))
+
+	title = info.get("title", "audio")
+	duration_seconds = info.get("duration")
 
 	filename = f"{safe_filename(title)}.mp3"
 
