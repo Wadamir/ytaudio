@@ -1,6 +1,6 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from bot.config import ADMIN_USER_ID
+from bot.config.app import ADMIN_USER_ID
 
 
 def build_admin_stats_text() -> str:

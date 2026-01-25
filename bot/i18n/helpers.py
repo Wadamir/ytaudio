@@ -1,7 +1,13 @@
 from telegram.ext import ContextTypes # type: ignore
 from bot.db.db import get_user_language
 from bot.i18n.service import get_text
-from bot.i18n.constants import BOT_I18N_CONSTANTS
+from bot.config.bot import BOT_USERNAME, BOT_TITLE, BOT_CAPTION_PREFIX
+
+DEFAULT_I18N_CONTEXT = {
+	"BOT_USERNAME": BOT_USERNAME,
+	"BOT_TITLE": BOT_TITLE,
+	"BOT_CAPTION_PREFIX": BOT_CAPTION_PREFIX,
+}
 
 def tr(context: ContextTypes.DEFAULT_TYPE, key: str, **kwargs) -> str:
 	lang = context.user_data.get("lang")
@@ -12,7 +18,7 @@ def tr(context: ContextTypes.DEFAULT_TYPE, key: str, **kwargs) -> str:
 		context.user_data["lang"] = lang
 		
 	# inject constants
-	for const_key, const_value in BOT_I18N_CONSTANTS.items():
+	for const_key, const_value in DEFAULT_I18N_CONTEXT.items():
 		if const_key not in kwargs:
 			kwargs[const_key] = const_value
 
@@ -23,7 +29,7 @@ def tr_user(user_id: int, key: str, **kwargs) -> str:
 	lang = get_user_language(user_id)
 
 	# inject constants
-	for const_key, const_value in BOT_I18N_CONSTANTS.items():
+	for const_key, const_value in DEFAULT_I18N_CONTEXT.items():
 		if const_key not in kwargs:
 			kwargs[const_key] = const_value
 			

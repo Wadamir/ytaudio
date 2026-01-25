@@ -106,7 +106,11 @@ async def process_job(job: Dict, bot: Bot):
 	logger.debug(f"[downloader] yt-dlp info: {info}")
 
 	title = info.get("title", "audio")
+	author = info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube"
 	duration_seconds = info.get("duration")
+	if not isinstance(duration_seconds, int):
+		duration_seconds = None
+
 
 	filename = f"{safe_filename(title)}.mp3"
 
@@ -127,6 +131,9 @@ async def process_job(job: Dict, bot: Bot):
 			chat_id=chat_id,
 			audio=f,
 			filename=filename,
+			title=title,
+			performer=author,
+			duration=duration_seconds,
 			caption=tr_user(user_id, "audio_ready_caption"),
 			parse_mode="HTML",
 		)

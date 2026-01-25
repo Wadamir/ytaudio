@@ -58,8 +58,7 @@ TEXTS = {
     ),
 
     "audio_ready_caption": (
-        "✅ <b>Your audio is ready</b>\n\n"
-        "{bot_caption} <b>{bot_username}</b>"
+        "\n\n{bot_caption} <b>{bot_username}</b>"
     ),
 
     "link_created_caption": (
