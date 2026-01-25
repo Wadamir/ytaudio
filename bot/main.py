@@ -9,7 +9,17 @@ from bot.workers.queue import start_workers
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-logging.basicConfig(level=logging.INFO)
+# 🔹 1. basicConfig
+logging.basicConfig(
+	level=logging.INFO,
+	format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+)
+
+# 🔹 2. Mute libraries
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.WARNING)
+logging.getLogger("telegram.ext").setLevel(logging.WARNING)
+logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
 async def post_init(app):
