@@ -97,6 +97,7 @@ async def process_job(job: Dict, bot: Bot):
 	# title = lines[0] if len(lines) > 0 else "audio"
 	# duration_seconds = int(lines[1]) if len(lines) > 1 and lines[1].isdigit() else None
 	info = json.loads(stdout.decode("utf-8"))
+	logger.debug(f"[downloader] yt-dlp info: {info}")
 
 	title = info.get("title", "audio")
 	duration_seconds = info.get("duration")
