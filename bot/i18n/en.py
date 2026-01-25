@@ -3,6 +3,8 @@ TEXTS = {
 	"language_set": "✅ Language set: English",
 
     "invalid_link": "❌ Please send a valid link.",
+    "live_stream_not_supported": "❌ Live streams are not supported.",
+    "duration_exceeds_limit": "❌ The video duration exceeds the maximum allowed length of {max_duration}.",
 
 	"queue": "⏳ Task added to queue. Please wait.",
 	"reading_info": "🔍 Reading video information…",
@@ -10,7 +12,7 @@ TEXTS = {
     "failed_reading_info": "❌ Failed to read video information.",
 
 	"fast_mode": "⚡ Downloading audio (fast mode) {size_mb:.1f} MB",
-	"slow_mode": "⬇️ Downloading audio (re-encoding) {size_mb:.1f} MB{warning_line}",
+	"slow_mode": "⬇️ Downloading audio (re-encoding) {size_mb:.1f} MB Please be patient...",
 
 	"failed_download": "❌ Failed to download audio.",
 	"failed_sending_audio": "❌ Failed to send audio.",
