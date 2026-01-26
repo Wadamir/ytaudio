@@ -4,7 +4,6 @@ from typing import Optional
 from bot.utils.time import utc_now_iso, utc_today_iso
 
 
-
 DB_PATH = Path("/storage/db/bot.sqlite3")
 
 
@@ -268,7 +267,7 @@ def seed_plans(conn):
 # --------------------------------------------------
 # Users
 # --------------------------------------------------
-def register_user(user) -> None:
+def register_user(user) -> bool:
 	now = utc_now_iso()
 
 	with get_conn() as conn:
@@ -298,6 +297,8 @@ def register_user(user) -> None:
 				now,
 				now,
 			))
+			conn.commit()
+			return True
 		else:
 			conn.execute("""
 				UPDATE users
@@ -315,7 +316,7 @@ def register_user(user) -> None:
 				user.id,
 			))
 		conn.commit()
-
+		return False
 
 def set_user_language(user_id: int, lang: str):
 	with get_conn() as conn:

@@ -1,8 +1,9 @@
 from telegram import Update # type: ignore
 from telegram.ext import ContextTypes # type: ignore
 
-from bot.db.db import register_user, can_user_download
-from bot.i18n.helpers import tr
+from bot.db.db import register_user, can_user_download, get_user_language, set_user_language
+from bot.i18n.helpers import tr, tr_user
+from bot.i18n.keyboards import user_reply_keyboard
 from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.parsers.registry import is_supported_url
@@ -15,15 +16,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	user = update.effective_user
 	message = update.message
 
-	# register / update user
-	register_user(user)
+	lang = get_user_language(user.id)
+	
+	if not lang:
+		set_user_language(user.id, 'en')
+		context.user_data['lang'] = 'en'
+
+		await update.message.reply_text(
+			tr_user(user.id, "language_set_default"),
+			reply_markup=user_reply_keyboard(user.id)
+		)
 
 	# check limits
 	allowed, used, limit, plan = can_user_download(user.id)
 	if not allowed:
 		await message.reply_text(
-			tr(
-				context,
+			tr_user(
+				user.id,
 				"daily_limit_reached",
 				plan=plan,
 				used=used,

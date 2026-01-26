@@ -25,7 +25,7 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	)
 	
 	await query.message.reply_text(
-		tr_user(query.from_user.id, "menu_hint"),
+		tr_user(query.from_user.id, "after_language_set"),
 		reply_markup=user_reply_keyboard(query.from_user.id)
 	)
 

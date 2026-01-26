@@ -1,4 +1,4 @@
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton # type: ignore
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove # type: ignore
 from bot.i18n.service import LANGS
 from bot.i18n.helpers import tr_user
 

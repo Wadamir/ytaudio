@@ -1,4 +1,4 @@
-from telegram import Update # type: ignore
+from telegram import Update, ReplyKeyboardRemove # type: ignore
 from telegram.ext import ContextTypes # type: ignore
 
 from bot.db.db import (
@@ -13,17 +13,25 @@ from bot.utils.time import time_until_utc_reset
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	user = update.effective_user
-	register_user(user)
+	is_new = register_user(user)
 
-	await update.message.reply_text(
-		tr(context, "start_choose_language"),
-		reply_markup=language_keyboard()
-	)
-	
-	await update.message.reply_text(
-		tr_user(user.id, "menu_hint"),
-		reply_markup=user_reply_keyboard(user.id)
-	)
+	if is_new:
+		await update.message.reply_text(
+			tr(context, "start_choose_language"),
+			reply_markup=language_keyboard()
+		)
+
+		# Hide the keyboard for new users
+		await update.message.reply_text(
+			" ",
+			reply_markup=ReplyKeyboardRemove()
+		)
+	else:
+		# Show menu to returning users
+		await update.message.reply_text(
+			"welcome_back",
+			reply_markup=user_reply_keyboard(user.id)
+		)
 
 
 async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
