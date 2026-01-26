@@ -4,14 +4,16 @@ from telegram.ext import ContextTypes # type: ignore
 
 from typing import Optional
 from bot.config.app import ADMIN_USER_ID
+
 from bot.db.db import (
 	get_total_users,
 	get_total_new_users_today,
-	get_total_users_week,
+	get_total_active_users_today,
+	# get_total_users_week,
 	get_top_users,
 	get_total_downloads,
 	get_total_downloads_today,
-	get_total_downloads_week,
+	# get_total_downloads_week,
 	get_downloads_by_delivery_methods,
 	get_failure_rate,
 	get_avg_processing_time,
@@ -23,20 +25,29 @@ from bot.db.db import (
 )
 from bot.utils.format import fmt_int
 
+LABELS = {
+	"telegram": "Telegram",
+	"telegram_split": "Telegram (split)",
+	"failed": "Failed",
+	"fast_mode": "Fast mode",
+	"slow_mode": "Slow mode",
+}
+
 logger = logging.getLogger(__name__)
 
 
 def build_admin_stats_text() -> str:
 	# --- Users ---
-	total_users = get_total_users()
-	new_today = get_total_new_users_today()
-	new_week = get_total_users_week()
+	users_total = get_total_users()
+	users_today = get_total_new_users_today()
+	users_active_today = get_total_active_users_today()
+	# new_week = get_total_users_week()
 	top_users = get_top_users(5)
 
 	# --- Downloads ---
 	total_dl = get_total_downloads(success_only=True)
 	dl_today = get_total_downloads_today()
-	dl_week = get_total_downloads_week()
+	# dl_week = get_total_downloads_week()
 	by_delivery = get_downloads_by_delivery_methods()
 	failure_rate = get_failure_rate()
 
@@ -59,9 +70,8 @@ def build_admin_stats_text() -> str:
 
 	# 👥 Users
 	lines.append("👥 <b>Users</b>")
-	lines.append(f"• Total: <b>{total_users}</b>")
-	lines.append(f"• New today: <b>{new_today}</b>")
-	lines.append(f"• New 7d: <b>{new_week}</b>")
+	lines.append(f"• Total / Today: <b>{users_total} / {users_today}</b>")
+	lines.append(f"• Active today: <b>{users_active_today}</b>")
 
 	if top_users:
 		lines.append("• Top users:")
@@ -72,12 +82,12 @@ def build_admin_stats_text() -> str:
 
 	# 📥 Downloads
 	lines.append("📥 <b>Downloads</b>")
-	lines.append(f"• Total (success): <b>{fmt_int(total_dl)}</b>")
-	lines.append(f"• Today: <b>{fmt_int(dl_today)}</b>")
-	lines.append(f"• 7d: <b>{fmt_int(dl_week)}</b>")
+	lines.append(f"• Total / Today: <b>{fmt_int(total_dl)} / {fmt_int(dl_today)}</b>")
+	# lines.append(f"• 7d: <b>{fmt_int(dl_week)}</b>")
 
 	for k, v in by_delivery.items():
-		lines.append(f"• {k}: {fmt_int(v)}")
+		label = LABELS.get(k, k)
+		lines.append(f"• {label}: {fmt_int(v)}")
 
 	if failure_rate is not None:
 		if failure_rate < 5:
@@ -99,7 +109,7 @@ def build_admin_stats_text() -> str:
 		)
 
 	for mode, data in latency_by_mode.items():
-		mode_label = mode or "unknown"
+		mode_label = LABELS.get(mode, mode)
 		lines.append(
 			f"• {mode_label}: {fmt_int(data['count'])} | "
 			f"avg {fmt_int(data['avg_processing_time_ms'])} ms"
@@ -108,8 +118,7 @@ def build_admin_stats_text() -> str:
 
 	# 🚨 Errors
 	lines.append("🚨 <b>YouTube Errors</b>")
-	lines.append(f"• Total: <b>{fmt_int(total_errors)}</b>")
-	lines.append(f"• Today: <b>{fmt_int(errors_today)}</b>")
+	lines.append(f"• Total / Today: <b>{fmt_int(total_errors)}</b> / <b>{fmt_int(errors_today)}</b>")
 	for etype, cnt in sorted(errors_by_type.items()):
 		lines.append(f"• HTTP {etype}: {fmt_int(cnt)}")
 	if errors_downloads:
@@ -132,4 +141,8 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		return
 
 	text = build_admin_stats_text()
-	await update.message.reply_text(text)
+	await update.message.reply_text(
+		text,
+		parse_mode="HTML",
+		disable_web_page_preview=True,
+	)

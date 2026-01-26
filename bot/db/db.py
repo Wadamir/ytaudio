@@ -385,15 +385,24 @@ def get_total_new_users_today() -> int:
 		return cur.fetchone()[0]
 	
 
-def get_total_users_week() -> int:
-	now = utc_today_iso()
-	with get_conn() as conn:
-		cur = conn.execute("""
-			SELECT COUNT(*)
-			FROM users
-			WHERE DATE(registered_at) >= DATE(?, '-7 days')
-		""", (now,))
-		return cur.fetchone()[0]
+def get_total_active_users_today() -> int:
+    now = utc_today_iso()
+    with get_conn() as conn:
+        cur = conn.execute("""
+            SELECT COUNT(*)
+            FROM users
+            WHERE DATE(last_seen) = ?
+        """, (now,))
+        return cur.fetchone()[0]
+# def get_total_users_week() -> int:
+# 	now = utc_today_iso()
+# 	with get_conn() as conn:
+# 		cur = conn.execute("""
+# 			SELECT COUNT(*)
+# 			FROM users
+# 			WHERE DATE(registered_at) >= DATE(?, '-7 days')
+# 		""", (now,))
+# 		return cur.fetchone()[0]
 
 
 def get_top_users(limit: int = 10) -> list[dict]:
@@ -621,14 +630,14 @@ def get_total_downloads_today() -> int:
 		return cur.fetchone()[0]
 	
 
-def get_total_downloads_week() -> int:
-	with get_conn() as conn:
-		cur = conn.execute("""
-			SELECT COUNT(*)
-			FROM downloads
-			WHERE DATE(created_at) >= DATE(?, '-7 days')
-		""", (utc_today_iso(),))
-		return cur.fetchone()[0]
+# def get_total_downloads_week() -> int:
+# 	with get_conn() as conn:
+# 		cur = conn.execute("""
+# 			SELECT COUNT(*)
+# 			FROM downloads
+# 			WHERE DATE(created_at) >= DATE(?, '-7 days')
+# 		""", (utc_today_iso(),))
+# 		return cur.fetchone()[0]
 	
 
 def get_downloads_per_user(user_id: int) -> int:
