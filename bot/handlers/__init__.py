@@ -15,6 +15,7 @@ __all__ = ["register_handlers"]
 
 def register_handlers(app: Application):
 	app.add_handler(CommandHandler("start", start_handler))
+	app.add_handler(CommandHandler("language", start_handler))
 	app.add_handler(CommandHandler("plan", plan_handler))
 	app.add_handler(CommandHandler("stats", stats_handler))
 

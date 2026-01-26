@@ -85,7 +85,7 @@ def init_db():
 				real_size_mb REAL,
 
 				processing_mode TEXT,
-				-- fast | slow
+				-- fast_mode | slow_mode
 				processing_time_ms INTEGER,
 
 				delivery_method TEXT NOT NULL,

@@ -51,13 +51,12 @@ class DownloadContext:
 	duration_seconds: Optional[int] = None
 
 	# processing
-	processing_mode: Optional[Literal["fast", "slow"]] = "slow"
+	processing_mode: Optional[Literal["fast_mode", "slow_mode"]] = "slow_mode"
 	chosen_bitrate: Optional[int] = None
 
 	# result
 	status: Literal["success", "failed"] = "failed"
 	delivery_method: Optional[Literal["telegram", "telegram_split", "link", "failed"]] = "failed"
-	error_message: Optional[str] = None
 
 	# metrics
 	estimated_size_mb: Optional[float] = None
@@ -285,10 +284,10 @@ async def process_job(job: Dict, bot: Bot):
 		ctx.chosen_bitrate = plan.bitrate
 
 		if plan.mode == "fast_mode":
-			ctx.processing_mode = "fast"
+			ctx.processing_mode = "fast_mode"
 			opts = ydl_fast_mode_opts(plan)
 		else:
-			ctx.processing_mode = "slow"
+			ctx.processing_mode = "slow_mode"
 			opts = ydl_slow_mode_opts(plan)
 		
 		#notify user about download start
@@ -330,21 +329,6 @@ async def process_job(job: Dict, bot: Bot):
 				message_id=message_id,
 				text=tr_user(user_id, "failed_download"),
 			)
-			# log_download(
-			# 	user_id=user_id,
-			# 	video_url=url,
-			# 	video_id=None,
-			# 	video_title=None,
-			# 	duration_seconds=None,
-			# 	chosen_bitrate=plan.bitrate,
-			# 	estimated_size_mb=None,
-			# 	real_size_mb=None,
-			# 	processing_mode="yt-dlp",
-			# 	processing_time_ms=None,
-			# 	delivery_method="failed",
-			# 	status="failed",
-			# 	error_message=str(e)[:500],
-			# )
 			ctx.delivery_method = "failed"
 			ctx.status = "failed"
 			ctx.fallback_reason = "download_failed"
@@ -377,21 +361,6 @@ async def process_job(job: Dict, bot: Bot):
 					message_id=message_id,
 					text=tr_user(user_id, "failed_sending_audio"),
 				)
-				# log_download(
-				# 	user_id=user_id,
-				# 	video_url=url,
-				# 	video_id=None,
-				# 	video_title=plan.title,
-				# 	duration_seconds=info.get("duration"),
-				# 	chosen_bitrate=plan.bitrate,
-				# 	estimated_size_mb=None,
-				# 	real_size_mb=format_size_mb(real_size_mb),
-				# 	processing_mode="yt-dlp",
-				# 	processing_time_ms=None,
-				# 	delivery_method="telegram",
-				# 	status="failed",
-				# 	error_message=str(e)[:500],
-				# )
 				ctx.delivery_method = "failed"				
 				ctx.status = "failed"
 				ctx.fallback_reason = "sending_failed"
@@ -448,21 +417,6 @@ async def process_job(job: Dict, bot: Bot):
 					message_id=message_id,
 					text=tr_user(user_id, "failed_sending_audio"),
 				)
-				# log_download(
-				# 	user_id=user_id,
-				# 	video_url=url,
-				# 	video_id=None,
-				# 	video_title=plan.title,
-				# 	duration_seconds=info.get("duration"),
-				# 	chosen_bitrate=plan.bitrate,
-				# 	estimated_size_mb=None,
-				# 	real_size_mb=format_size_mb(real_size_mb),
-				# 	processing_mode="yt-dlp",
-				# 	processing_time_ms=None,
-				# 	delivery_method="telegram",
-				# 	status="failed",
-				# 	error_message=str(e)[:500],
-				# )
 				ctx.delivery_method = "failed"
 				ctx.status = "failed"
 				ctx.error_message = str(e)[:500]
