@@ -1,3 +1,5 @@
+import logging
+
 from telegram import Update # type: ignore
 from telegram.ext import ContextTypes # type: ignore
 
@@ -9,10 +11,13 @@ from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.parsers.registry import is_supported_url
 
+logger = logging.getLogger(__name__)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if not update.message or not update.message.text:
 		return
+	
+	logger.info("Received message: %s", update.message.text)
 
 	user = update.effective_user
 	message = update.message
