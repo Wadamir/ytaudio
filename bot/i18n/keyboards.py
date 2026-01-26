@@ -1,4 +1,4 @@
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton # type: ignore
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton # type: ignore
 from bot.i18n.service import LANGS
 from bot.i18n.helpers import tr_user
 
@@ -26,16 +26,14 @@ def language_keyboard() -> InlineKeyboardMarkup:
 
 	return InlineKeyboardMarkup(buttons)
 
-def user_menu_keyboard(user_id: int) -> InlineKeyboardMarkup:
-	return InlineKeyboardMarkup([
+def user_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
+	return ReplyKeyboardMarkup(
 		[
-			InlineKeyboardButton(
-				tr_user(user_id, "btn_language"),
-				callback_data="menu_language"
-			),
-			InlineKeyboardButton(
-				tr_user(user_id, "btn_plan"),
-				callback_data="menu_plan"
-			),
-		]
-	])
+			[
+				KeyboardButton(tr_user(user_id, "btn_language")),
+				KeyboardButton(tr_user(user_id, "btn_plan")),
+			]
+		],
+		resize_keyboard=True,
+		persistent=True,
+	)

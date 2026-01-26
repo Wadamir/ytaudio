@@ -5,8 +5,8 @@ from bot.db.db import (
 	register_user,
 	can_user_download,
 )
-from bot.i18n.helpers import tr
-from bot.i18n.keyboards import language_keyboard, user_menu_keyboard
+from bot.i18n.helpers import tr, tr_user
+from bot.i18n.keyboards import language_keyboard, user_reply_keyboard
 
 from bot.utils.time import time_until_utc_reset
 
@@ -18,6 +18,11 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	await update.message.reply_text(
 		tr(context, "start_choose_language"),
 		reply_markup=language_keyboard()
+	)
+	
+	await update.message.reply_text(
+		tr_user(user.id, "meun_hint"),
+		reply_markup=user_reply_keyboard(user.id)
 	)
 
 

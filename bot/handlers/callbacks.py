@@ -2,11 +2,10 @@ from telegram import Update # type: ignore
 from telegram.ext import ContextTypes # type: ignore
 
 from bot.db.db import set_user_language
-from bot.i18n.helpers import tr
+from bot.i18n.helpers import tr, tr_user
 from bot.i18n.service import is_supported_lang
-from bot.i18n.keyboards import language_keyboard
+from bot.i18n.keyboards import language_keyboard, user_reply_keyboard
 from bot.handlers.commands import plan_handler
-
 
 
 async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -24,6 +23,11 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	await query.edit_message_text(
 		tr(context, "language_set")
 	)
+	
+	await query.message.reply_text(
+		tr_user(query.from_user.id, "menu_hint"),
+		reply_markup=user_reply_keyboard(query.from_user.id)
+	)
 
 async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	query = update.callback_query
@@ -38,5 +42,4 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 	elif query.data == "menu_plan":
-		# просто вызываем существующий handler
 		await plan_handler(update, context)

@@ -71,6 +71,7 @@ TEXTS = {
     ),
 
     # --- Keyboards ---
+    "menu_hint": "You can use the menu below 👇",
     "btn_language": "🌐 Language",
     "btn_plan": "💳 Plan",
 }
