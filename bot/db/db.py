@@ -89,7 +89,7 @@ def init_db():
 				processing_time_ms INTEGER,
 
 				delivery_method TEXT NOT NULL,
-				-- telegram | link | failed
+				-- telegram | telegram_split | link | failed
 
 				file_path TEXT,
 				download_url TEXT,

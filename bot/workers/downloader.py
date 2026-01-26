@@ -51,18 +51,22 @@ class DownloadContext:
 	duration_seconds: Optional[int] = None
 
 	# processing
-	processing_mode: Optional[Literal["fast_mode", "slow_mode"]] = None
+	processing_mode: Optional[Literal["fast", "slow"]] = "slow"
 	chosen_bitrate: Optional[int] = None
 
 	# result
 	status: Literal["success", "failed"] = "failed"
-	delivery_method: Optional[str] = None
+	delivery_method: Optional[Literal["telegram", "telegram_split", "link", "failed"]] = "failed"
 	error_message: Optional[str] = None
 
 	# metrics
 	estimated_size_mb: Optional[float] = None
 	real_size_mb: Optional[float] = None
 	processing_time_ms: Optional[int] = None
+
+	# errors
+	fallback_reason: Optional[str] = None #too_large | long_video | timeout | NULL
+	error_message: Optional[str] = None
 @dataclass
 class DownloadPlan:
 	tmp_id: str
@@ -202,7 +206,7 @@ async def process_job(job: Dict, bot: Bot):
 		
 		ctx = DownloadContext(
 			user_id=user_id,
-			video_url=job["url"],
+			video_url=url,
 		)        
 
 		tmp_files: list[Path] = []
@@ -278,12 +282,13 @@ async def process_job(job: Dict, bot: Bot):
 		ctx.video_id = info.get("id")
 		ctx.video_title = plan.title
 		ctx.duration_seconds = duration
-		ctx.processing_mode = plan.mode
 		ctx.chosen_bitrate = plan.bitrate
 
 		if plan.mode == "fast_mode":
+			ctx.processing_mode = "fast"
 			opts = ydl_fast_mode_opts(plan)
 		else:
+			ctx.processing_mode = "slow"
 			opts = ydl_slow_mode_opts(plan)
 		
 		#notify user about download start
@@ -340,7 +345,9 @@ async def process_job(job: Dict, bot: Bot):
 			# 	status="failed",
 			# 	error_message=str(e)[:500],
 			# )
+			ctx.delivery_method = "failed"
 			ctx.status = "failed"
+			ctx.fallback_reason = "download_failed"
 			ctx.error_message = str(e)[:500]
 
 			return
@@ -385,7 +392,9 @@ async def process_job(job: Dict, bot: Bot):
 				# 	status="failed",
 				# 	error_message=str(e)[:500],
 				# )
+				ctx.delivery_method = "failed"				
 				ctx.status = "failed"
+				ctx.fallback_reason = "sending_failed"
 				ctx.error_message = str(e)[:500]
 
 				return
@@ -430,6 +439,8 @@ async def process_job(job: Dict, bot: Bot):
 						)
 						await asyncio.sleep(0.7)  # to avoid hitting Telegram limits
 
+				ctx.status = "success"
+				ctx.delivery_method = f"telegram_split"
 			except Exception as e:
 				logger.exception("[downloader] failed sending split audio via Telegram")
 				await bot.edit_message_text(
@@ -452,8 +463,10 @@ async def process_job(job: Dict, bot: Bot):
 				# 	status="failed",
 				# 	error_message=str(e)[:500],
 				# )
+				ctx.delivery_method = "failed"
 				ctx.status = "failed"
 				ctx.error_message = str(e)[:500]
+				ctx.fallback_reason = "sending_failed"
 
 				return
 
