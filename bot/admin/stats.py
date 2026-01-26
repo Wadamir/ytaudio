@@ -22,8 +22,10 @@ from bot.db.db import (
 	get_total_youtube_errors_today,
 	get_youtube_errors_by_type,
 	get_failed_downloads_last_24h,
+	get_last_successful_download_at,
 )
 from bot.utils.format import fmt_int
+from bot.utils.time import time_ago_from_iso
 
 LABELS = {
 	"telegram": "Telegram",
@@ -61,6 +63,9 @@ def build_admin_stats_text() -> str:
 	errors_by_type = get_youtube_errors_by_type()
 	errors_downloads = get_failed_downloads_last_24h()
 
+	# --- Activity ---
+	last_successful_download_at = get_last_successful_download_at()
+	
 	# --------------------------------------------------
 	# Formatting
 	# --------------------------------------------------
@@ -126,8 +131,13 @@ def build_admin_stats_text() -> str:
 		for e in errors_downloads[:5]:
 			lines.append(f"• {fmt_int(e['count'])} x {e['error'][:80]}")
 	else:
-		lines.append("")
 		lines.append("✅ <b>No errors in last 24h</b>")
+	lines.append("")
+
+	# ⏰ Activity
+	lines.append("⏰ <b>Activity</b>")
+	if last_successful_download_at:
+		lines.append(f"🕒 Last download: <b>{time_ago_from_iso(last_successful_download_at)}</b>")
 
 	return "\n".join(lines)
 

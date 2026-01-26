@@ -746,6 +746,18 @@ def get_latency_stats() -> dict[str, Optional[float]]:
 			}
 		return stats
 
+def get_last_successful_download_at():
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT created_at
+			FROM downloads
+			WHERE status = 'success'
+			ORDER BY created_at DESC
+			LIMIT 1
+		""")
+		row = cur.fetchone()
+		return row[0] if row else None
+
 
 
 # --------------------------------------------------
