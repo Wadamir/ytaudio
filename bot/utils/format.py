@@ -10,7 +10,7 @@ def format_duration(seconds: Optional[int]) -> str:
 	minutes, _ = divmod(remainder, 60)
 
 	if hours > 0:
-		return f"{hours:02d}:{minutes:02d}"
+		return f"{hours:02d} h {minutes:02d} min"
 
 	return f"{minutes:02d} min"
 
