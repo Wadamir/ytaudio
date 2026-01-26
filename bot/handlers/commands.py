@@ -29,7 +29,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	else:
 		# Show menu to returning users
 		await update.message.reply_text(
-			tr_user(user.id, "start_welcome_back"),
+			tr_user(user.id, "welcome_back"),
 			reply_markup=user_reply_keyboard(user.id)
 		)
 
