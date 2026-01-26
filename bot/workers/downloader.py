@@ -5,7 +5,7 @@ import uuid
 import yt_dlp # type: ignore
 import math
 
-from typing import Literal, Iterable
+from typing import Optional, Literal, Iterable
 from dataclasses import dataclass
 
 from pathlib import Path
@@ -39,6 +39,30 @@ from bot.config.telegram import (
 
 logger = logging.getLogger(__name__)
 
+
+@dataclass
+class DownloadContext:
+	user_id: int
+	video_url: str
+
+	# video info
+	video_id: Optional[str] = None
+	video_title: Optional[str] = None
+	duration_seconds: Optional[int] = None
+
+	# processing
+	processing_mode: Optional[Literal["fast_mode", "slow_mode"]] = None
+	chosen_bitrate: Optional[int] = None
+
+	# result
+	status: Literal["success", "failed"] = "failed"
+	delivery_method: Optional[str] = None
+	error_message: Optional[str] = None
+
+	# metrics
+	estimated_size_mb: Optional[float] = None
+	real_size_mb: Optional[float] = None
+	processing_time_ms: Optional[int] = None
 @dataclass
 class DownloadPlan:
 	tmp_id: str
@@ -175,6 +199,11 @@ async def process_job(job: Dict, bot: Bot):
 		chat_id: int = job["chat_id"]
 		message_id: int = job["message_id"]
 		url: str = job["url"]
+		
+		ctx = DownloadContext(
+			user_id=user_id,
+			video_url=job["url"],
+		)        
 
 		tmp_files: list[Path] = []
 
@@ -245,6 +274,12 @@ async def process_job(job: Dict, bot: Bot):
 			bitrate=AUDIO_BITRATE_PREFERRED,
 			out_dir=AUDIO_DIR,
 		)
+		
+		ctx.video_id = info.get("id")
+		ctx.video_title = plan.title
+		ctx.duration_seconds = duration
+		ctx.processing_mode = plan.mode
+		ctx.chosen_bitrate = plan.bitrate
 
 		if plan.mode == "fast_mode":
 			opts = ydl_fast_mode_opts(plan)
@@ -280,6 +315,7 @@ async def process_job(job: Dict, bot: Bot):
 			tmp_files.append(tmp_path)
 
 			real_size_mb = round(tmp_path.stat().st_size / 1024 / 1024 , 2)
+			ctx.real_size_mb = real_size_mb
 			logger.debug(f"[downloader] downloaded file size: {format_size_mb(real_size_mb)}")
 
 		except Exception as e:
@@ -289,21 +325,24 @@ async def process_job(job: Dict, bot: Bot):
 				message_id=message_id,
 				text=tr_user(user_id, "failed_download"),
 			)
-			log_download(
-				user_id=user_id,
-				video_url=url,
-				video_id=None,
-				video_title=None,
-				duration_seconds=None,
-				chosen_bitrate=plan.bitrate,
-				estimated_size_mb=None,
-				real_size_mb=None,
-				processing_mode="yt-dlp",
-				processing_time_ms=None,
-				delivery_method="failed",
-				status="failed",
-				error_message=str(e)[:500],
-			)
+			# log_download(
+			# 	user_id=user_id,
+			# 	video_url=url,
+			# 	video_id=None,
+			# 	video_title=None,
+			# 	duration_seconds=None,
+			# 	chosen_bitrate=plan.bitrate,
+			# 	estimated_size_mb=None,
+			# 	real_size_mb=None,
+			# 	processing_mode="yt-dlp",
+			# 	processing_time_ms=None,
+			# 	delivery_method="failed",
+			# 	status="failed",
+			# 	error_message=str(e)[:500],
+			# )
+			ctx.status = "failed"
+			ctx.error_message = str(e)[:500]
+
 			return
 		
 
@@ -322,6 +361,8 @@ async def process_job(job: Dict, bot: Bot):
 						caption=tr_user(user_id, "audio_ready_caption"),
 						parse_mode="HTML",
 					)
+				ctx.status = "success"
+				ctx.delivery_method = "telegram"
 			except Exception as e:
 				logger.exception("[downloader] failed sending audio via Telegram")
 				await bot.edit_message_text(
@@ -329,21 +370,24 @@ async def process_job(job: Dict, bot: Bot):
 					message_id=message_id,
 					text=tr_user(user_id, "failed_sending_audio"),
 				)
-				log_download(
-					user_id=user_id,
-					video_url=url,
-					video_id=None,
-					video_title=plan.title,
-					duration_seconds=info.get("duration"),
-					chosen_bitrate=plan.bitrate,
-					estimated_size_mb=None,
-					real_size_mb=format_size_mb(real_size_mb),
-					processing_mode="yt-dlp",
-					processing_time_ms=None,
-					delivery_method="telegram",
-					status="failed",
-					error_message=str(e)[:500],
-				)
+				# log_download(
+				# 	user_id=user_id,
+				# 	video_url=url,
+				# 	video_id=None,
+				# 	video_title=plan.title,
+				# 	duration_seconds=info.get("duration"),
+				# 	chosen_bitrate=plan.bitrate,
+				# 	estimated_size_mb=None,
+				# 	real_size_mb=format_size_mb(real_size_mb),
+				# 	processing_mode="yt-dlp",
+				# 	processing_time_ms=None,
+				# 	delivery_method="telegram",
+				# 	status="failed",
+				# 	error_message=str(e)[:500],
+				# )
+				ctx.status = "failed"
+				ctx.error_message = str(e)[:500]
+
 				return
 		else:
 			part_size_mb = TELEGRAM_MAX_FILESIZE_MB - 5
@@ -393,28 +437,37 @@ async def process_job(job: Dict, bot: Bot):
 					message_id=message_id,
 					text=tr_user(user_id, "failed_sending_audio"),
 				)
-				log_download(
-					user_id=user_id,
-					video_url=url,
-					video_id=None,
-					video_title=plan.title,
-					duration_seconds=info.get("duration"),
-					chosen_bitrate=plan.bitrate,
-					estimated_size_mb=None,
-					real_size_mb=format_size_mb(real_size_mb),
-					processing_mode="yt-dlp",
-					processing_time_ms=None,
-					delivery_method="telegram",
-					status="failed",
-					error_message=str(e)[:500],
-				)
+				# log_download(
+				# 	user_id=user_id,
+				# 	video_url=url,
+				# 	video_id=None,
+				# 	video_title=plan.title,
+				# 	duration_seconds=info.get("duration"),
+				# 	chosen_bitrate=plan.bitrate,
+				# 	estimated_size_mb=None,
+				# 	real_size_mb=format_size_mb(real_size_mb),
+				# 	processing_mode="yt-dlp",
+				# 	processing_time_ms=None,
+				# 	delivery_method="telegram",
+				# 	status="failed",
+				# 	error_message=str(e)[:500],
+				# )
+				ctx.status = "failed"
+				ctx.error_message = str(e)[:500]
+
 				return
 
 	finally:
 		cleanup_files(tmp_files)
 
 		# temporary exit after Telegram send
-		increment_downloads(user_id)
 		processing_time_ms = int((asyncio.get_event_loop().time() - start_ts) * 1000)
-		logger.info("[downloader] audio sent to %s via Telegram successfully in %d ms", user_id, processing_time_ms)
+		ctx.processing_time_ms = processing_time_ms
+		log_download(**ctx.__dict__)
+
+		if ctx.status == "success":
+			increment_downloads(ctx.user_id)
+			logger.info("[downloader] audio sent to %s via Telegram successfully in %d ms", user_id, processing_time_ms)
+		else:
+			logger.info("[downloader] processing for %s failed after %d ms: %s", user_id, processing_time_ms, ctx.error_message)
 		return
