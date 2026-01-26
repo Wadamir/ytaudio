@@ -22,10 +22,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		set_user_language(user.id, 'en')
 		context.user_data['lang'] = 'en'
 
-		await update.message.reply_text(
-			tr_user(user.id, "language_set_default"),
-			reply_markup=user_reply_keyboard(user.id)
-		)
+		# await update.message.reply_text(
+		# 	tr_user(user.id, "language_set_default"),
+		# 	reply_markup=user_reply_keyboard(user.id)
+		# )
 
 	# check limits
 	allowed, used, limit, plan = can_user_download(user.id)
@@ -47,13 +47,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	if not is_supported_url(url):
 		await message.reply_text(
-			tr(context, "invalid_link")
+			tr_user(user.id, "invalid_link")
 		)
 		return
 
 	# send "queued" message
 	status_msg = await message.reply_text(
-		tr(context, "queue")
+		tr_user(user.id, "queue")
 	)
 
 	# IMPORTANT:

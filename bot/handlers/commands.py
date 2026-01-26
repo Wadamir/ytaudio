@@ -17,7 +17,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	if is_new:
 		await update.message.reply_text(
-			tr(context, "start_choose_language"),
+			tr_user(user.id, "start_welcome_new"),
 			reply_markup=language_keyboard()
 		)
 
@@ -29,7 +29,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	else:
 		# Show menu to returning users
 		await update.message.reply_text(
-			"welcome_back",
+			tr_user(user.id, "start_welcome_back"),
 			reply_markup=user_reply_keyboard(user.id)
 		)
 
@@ -41,8 +41,8 @@ async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	allowed, used, limit, plan = can_user_download(user.id)
 	reset_in = time_until_utc_reset()
 
-	text = tr(
-		context,
+	text = tr_user(
+		user.id,
 		"plan_info",
 		plan_name=plan.capitalize(),
 		limit=limit,
@@ -51,9 +51,8 @@ async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	)
 
 	if not allowed:
-		text += tr(context, "plan_limit_reached")
-
-	text += tr(context, "plan_info_upgrade")
+		text += tr_user(user.id, "plan_limit_reached")
+	text += tr_user(user.id, "plan_info_upgrade")
 
 	await update.message.reply_text(
 		text,

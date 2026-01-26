@@ -21,7 +21,7 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	context.user_data["lang"] = lang
 
 	await query.edit_message_text(
-		tr(context, "language_set")
+		tr_user(query.from_user.id, "language_set")
 	)
 	
 	await query.message.reply_text(
@@ -29,17 +29,17 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		reply_markup=user_reply_keyboard(query.from_user.id)
 	)
 
-async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-	query = update.callback_query
-	user_id = query.from_user.id
+# async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# 	query = update.callback_query
+# 	user_id = query.from_user.id
 
-	await query.answer()
+# 	await query.answer()
 
-	if query.data == "menu_language":
-		await query.message.reply_text(
-			tr_user(user_id, "start_choose_language"),
-			reply_markup=language_keyboard()
-		)
+# 	if query.data == "menu_language":
+# 		await query.message.reply_text(
+# 			tr_user(user_id, "start_choose_language"),
+# 			reply_markup=language_keyboard()
+# 		)
 
-	elif query.data == "menu_plan":
-		await plan_handler(update, context)
+# 	elif query.data == "menu_plan":
+# 		await plan_handler(update, context)
