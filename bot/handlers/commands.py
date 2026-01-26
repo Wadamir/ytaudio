@@ -21,7 +21,7 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	)
 	
 	await update.message.reply_text(
-		tr_user(user.id, "meun_hint"),
+		tr_user(user.id, "menu_hint"),
 		reply_markup=user_reply_keyboard(user.id)
 	)
 

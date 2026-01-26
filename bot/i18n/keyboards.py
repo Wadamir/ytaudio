@@ -35,5 +35,4 @@ def user_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
 			]
 		],
 		resize_keyboard=True,
-		persistent=True,
 	)
