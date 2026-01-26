@@ -416,5 +416,5 @@ async def process_job(job: Dict, bot: Bot):
 		# temporary exit after Telegram send
 		increment_downloads(user_id)
 		processing_time_ms = int((asyncio.get_event_loop().time() - start_ts) * 1000)
-		logger.info("[downloader] audio sent via Telegram successfully in %d ms", processing_time_ms)
+		logger.info("[downloader] audio sent to %s via Telegram successfully in %d ms", user_id, processing_time_ms)
 		return
