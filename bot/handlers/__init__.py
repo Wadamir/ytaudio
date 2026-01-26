@@ -14,10 +14,14 @@ from bot.admin.stats import stats_handler
 __all__ = ["register_handlers"]
 
 def register_handlers(app: Application):
+	# commands
 	app.add_handler(CommandHandler("start", start_handler))
 	app.add_handler(CommandHandler("language", start_handler))
 	app.add_handler(CommandHandler("plan", plan_handler))
 	app.add_handler(CommandHandler("stats", stats_handler))
 
+    # callbacks
 	app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang_"))
+	
+    # messages
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

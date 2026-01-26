@@ -18,3 +18,8 @@ def format_size_mb(size_mb: Optional[float]) -> str:
 	if size_mb is None:
 		return "—"
 	return f"{size_mb:.1f} MB"
+
+def fmt_int(value: Optional[float | int]) -> str:
+	if value is None:
+		return "—"
+	return f"{int(value):,}".replace(",", " ")
