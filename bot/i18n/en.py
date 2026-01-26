@@ -69,4 +69,8 @@ TEXTS = {
         "⏰ Available for 12 hours\n\n"
         "{bot_caption_prefix} <b>{bot_username}</b>"
     ),
+
+    # --- Keyboards ---
+    "btn_language": "🌐 Language",
+    "btn_plan": "💳 Plan",
 }

@@ -71,7 +71,7 @@ def build_admin_stats_text() -> str:
 	# --------------------------------------------------
 	lines = []
 
-	lines.append("📊 <b>YT Audio Bot – Admin Stats</b>\n")
+	lines.append("📊 <b>Admin Stats</b>\n")
 
 	# 👥 Users
 	lines.append("👥 <b>Users</b>")

@@ -7,7 +7,7 @@ from telegram.ext import ( # type: ignore
 )
 
 from .commands import start_handler, plan_handler
-from .callbacks import language_callback
+from .callbacks import language_callback, menu_callback
 from .messages import handle_message
 from bot.admin.stats import stats_handler
 
@@ -22,6 +22,7 @@ def register_handlers(app: Application):
 
     # callbacks
 	app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang_"))
+	app.add_handler(CallbackQueryHandler(menu_callback, pattern="^menu_"))
 	
     # messages
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

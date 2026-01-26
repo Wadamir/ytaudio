@@ -6,7 +6,7 @@ from bot.db.db import (
 	can_user_download,
 )
 from bot.i18n.helpers import tr
-from bot.i18n.keyboards import language_keyboard
+from bot.i18n.keyboards import language_keyboard, user_menu_keyboard
 
 from bot.utils.time import time_until_utc_reset
 
