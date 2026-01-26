@@ -38,9 +38,9 @@ async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	)
 
 	if not allowed:
-		text += "\n\n" + tr(context, "plan_limit_reached")
+		text += tr(context, "plan_limit_reached")
 
-	text += "\n\n" + tr(context, "plan_info_upgrade")
+	text += tr(context, "plan_info_upgrade")
 
 	await update.message.reply_text(
 		text,

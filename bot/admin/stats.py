@@ -1,5 +1,5 @@
-from telegram import Update
-from telegram.ext import ContextTypes
+from telegram import Update # type: ignore
+from telegram.ext import ContextTypes # type: ignore
 from bot.config.app import ADMIN_USER_ID
 
 
