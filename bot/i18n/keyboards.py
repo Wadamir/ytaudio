@@ -29,7 +29,10 @@ def language_keyboard() -> InlineKeyboardMarkup:
 def user_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
 	return ReplyKeyboardMarkup(
 		[
-			[KeyboardButton("/language"), KeyboardButton("/plan")]
+			[
+				KeyboardButton("🌐 Language\u200bLANG"),
+                KeyboardButton("💳 Plan\u200bPLAN"),
+            ]
 		],
 		resize_keyboard=True,
 	)

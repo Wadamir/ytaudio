@@ -28,17 +28,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		set_user_language(user.id, 'en')
 		context.user_data['lang'] = 'en'
 
+
 	# --- MENU BUTTONS ---
-	if message.text == tr_user(user.id, "btn_language"):
+	text = message.text.strip()
+
+	if text.endswith("\u200bLANG"):
 		await message.reply_text(
 			tr_user(user.id, "start_choose_language"),
 			reply_markup=language_keyboard()
 		)
 		return
 
-	if message.text == tr_user(user.id, "btn_plan"):
+	if text.endswith("\u200bPLAN"):
 		await plan_handler(update, context)
 		return
+
 
 	# check limits
 	allowed, used, limit, plan = can_user_download(user.id)
