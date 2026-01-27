@@ -17,7 +17,7 @@ from telegram.error import TelegramError  # type: ignore
 from bot.utils.format import format_duration, format_size_mb
 from bot.utils.text import safe_filename, sanitize_text_field
 
-from bot.db.db import increment_downloads, log_download
+from bot.db.db import increment_downloads, log_download, log_youtube_error
 from bot.i18n.helpers import tr_user
 
 from bot.config.downloader import (
@@ -255,6 +255,12 @@ async def process_job(job: Dict, bot: Bot):
 		
 		if info.get("is_live"):
 			logger.warning("[downloader] live streams are not supported")
+			
+			log_youtube_error(
+				error_type="youtube_live",
+				video_url=url,
+				video_id=info.get("id"),
+			)
 			await bot.edit_message_text(
 				chat_id=chat_id,
 				message_id=message_id,
@@ -271,7 +277,7 @@ async def process_job(job: Dict, bot: Bot):
 			await bot.edit_message_text(
 				chat_id=chat_id,
 				message_id=message_id,
-				text=tr_user(user_id, "duration_exceeds_limit").format(max_duration=MAX_DURATION_SECONDS),
+				text=tr_user(user_id, "duration_exceeds_limit", max_duration=MAX_DURATION_SECONDS),
 			)
 			return
 		
@@ -332,6 +338,29 @@ async def process_job(job: Dict, bot: Bot):
 
 		except Exception as e:
 			logger.exception("[downloader] failed downloading audio")
+			
+			# detect youtube specific errors
+			err_msg = str(e).lower()
+			error_type = "youtube_unknown"
+			if "403" in err_msg:
+				error_type = "youtube_403"
+			elif "429" in err_msg:
+				error_type = "youtube_429"
+			elif "500" in err_msg:
+				error_type = "youtube_500"
+			elif "503" in err_msg:
+				error_type = "youtube_503"
+			elif "sabr" in err_msg or "missing a url" in err_msg:
+				error_type = "youtube_sabr"
+			elif "unavailable" in err_msg:
+				error_type = "youtube_unavailable"
+			log_youtube_error(
+				error_type=error_type,
+				video_url=url,
+				video_id=ctx.video_id,
+			)
+	
+			# notify user
 			await bot.edit_message_text(
 				chat_id=chat_id,
 				message_id=message_id,
@@ -339,7 +368,7 @@ async def process_job(job: Dict, bot: Bot):
 			)
 			ctx.delivery_method = "failed"
 			ctx.status = "failed"
-			ctx.fallback_reason = "download_failed"
+			ctx.fallback_reason = err_msg
 			ctx.error_message = str(e)[:500]
 
 			return

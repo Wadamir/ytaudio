@@ -135,6 +135,7 @@ def init_db():
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 				error_type TEXT NOT NULL,
+                -- youtube_403 | youtube_429 | youtube_500 | youtube_503 | youtube_sabr | youtube_unavailable | youtube_live | youtube_unknown
 				video_url TEXT,
 				video_id TEXT,
 
