@@ -32,14 +32,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# --- MENU BUTTONS ---
 	text = message.text.strip()
 
-	if text.endswith("\u200bLANG"):
+	if text.startswith("🌐"):
 		await message.reply_text(
 			tr_user(user.id, "start_choose_language"),
 			reply_markup=language_keyboard()
 		)
 		return
 
-	if text.endswith("\u200bPLAN"):
+	if text.startswith("💳"):
 		await plan_handler(update, context)
 		return
 

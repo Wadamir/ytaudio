@@ -30,9 +30,9 @@ def user_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
 	return ReplyKeyboardMarkup(
 		[
 			[
-				KeyboardButton("🌐 Language\u200bLANG"),
-                KeyboardButton("💳 Plan\u200bPLAN"),
-            ]
+				KeyboardButton(tr_user(user_id, "btn_language")),
+				KeyboardButton(tr_user(user_id, "btn_plan")),
+			]
 		],
 		resize_keyboard=True,
 	)
