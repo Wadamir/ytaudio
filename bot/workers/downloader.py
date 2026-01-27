@@ -83,6 +83,14 @@ def ydl_base_opts():
 		"retries": YTDLP_RETRIES,
 		"fragment_retries": 3,
 		"noplaylist": YTDLP_NO_PLAYLIST,
+		"js_runtime": ["node"],
+		"http_headers": {
+			"User-Agent": (
+				"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+				"AppleWebKit/537.36 (KHTML, like Gecko) "
+				"Chrome/120.0.0.0 Safari/537.36"
+			)
+		},		
 	}
 
 def ydl_fast_mode_opts(plan: DownloadPlan):
