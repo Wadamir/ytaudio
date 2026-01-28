@@ -4,6 +4,7 @@ TEXTS = {
 	"after_language_set": "Теперь отправь ссылку на YouTube\nили используй меню снизу 👇",
 	"language_set_default": "Язык установлен: English 🇬🇧",
 
+    "start_welcome_new": "Добро пожаловать, друг! 👋",
 	"welcome_back": "С возвращением, друг! 👋",
 
 	"invalid_link": "❌ Пожалуйста, отправь корректную ссылку.",

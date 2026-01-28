@@ -4,6 +4,7 @@ TEXTS = {
     "after_language_set": "Now send me a YouTube link\nor you can use the menu below 👇",
     "language_set_default": "Language set to English 🇬🇧",
 
+    "start_welcome_new": "Welcome, friend! 👋",
     "welcome_back": "Welcome back, my friend! 👋",
 
     "invalid_link": "❌ Please send a valid link.",
