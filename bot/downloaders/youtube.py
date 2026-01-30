@@ -167,6 +167,7 @@ class YouTubeDownloader(BaseDownloader):
 
 		ctx.video_id = info.get("id")
 		ctx.video_title = info.get("title")			
+		ctx.video_artist = info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube"
 		ctx.duration_seconds = duration
 
 		notify(ctx, DownloadStage.INFO_READY,

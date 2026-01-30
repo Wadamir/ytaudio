@@ -13,7 +13,7 @@ from bot.config.bot import (
 )
 
 
-async def _send_audio_telegram(bot: Bot, chat_id: int, file: Path, title: str = "", performer: str = "", caption: str = ""):
+async def _send_audio_telegram(bot: Bot, chat_id: int, file: Path, title: str = "", performer: str = "", duration: int = 0, caption: str = ""):
     try:
         with file.open("rb") as f:
             await bot.send_audio(
@@ -21,7 +21,8 @@ async def _send_audio_telegram(bot: Bot, chat_id: int, file: Path, title: str = 
                 audio=f, 
                 title=title, 
                 performer=performer, 
-                caption=caption
+                duration=duration,
+                caption=caption,
             )
     except TelegramError as e:
         raise DeliveryFailed(f"Telegram delivery failed: {e}") from e
@@ -39,12 +40,14 @@ async def deliver(ctx: DownloadContext, bot: Bot, chat_id: int):
             ctx.output_files[0], 
             title=ctx.video_title, 
             performer=ctx.video_artist,
+            duration=ctx.duration_seconds,
             caption=bot_caption
         )
 
     elif ctx.delivery_method == "telegram_split":
         for part in ctx.output_files:
             part_title = ctx.video_title
+            part_duration = ctx.duration_seconds / len(ctx.output_files) if ctx.duration_seconds else 0
             if len(ctx.output_files) > 1:
                 part_index = ctx.output_files.index(part) + 1
                 part_title = f"Part {part_index}/{len(ctx.output_files)} - {ctx.video_title}"
@@ -54,6 +57,7 @@ async def deliver(ctx: DownloadContext, bot: Bot, chat_id: int):
                 part, 
                 title=part_title, 
                 performer=ctx.video_artist, 
+                duration=part_duration,
                 caption=bot_caption
             )
 
