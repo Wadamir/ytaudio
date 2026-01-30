@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from bot.db.db import count_youtube_errors_last_minutes
 
 from bot.config.downloaders import *
-from bot.config.network import PRIMARY_IPv4, SECONDARY_IPv4
+from bot.config.network import YT_PROXY_PRIMARY, YT_PROXY_SECONDARY
 
 from .base import BaseDownloader, DownloadContext
 from .errors import DownloaderError, VideoUnavailable, LiveStreamNotSupported, VideoTooLong, DownloadFailed, FetchInfoFailed
