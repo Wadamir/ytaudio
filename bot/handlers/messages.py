@@ -9,7 +9,7 @@ from bot.i18n.keyboards import user_reply_keyboard, language_keyboard
 from bot.handlers.commands import plan_handler
 from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
-from bot.parsers.registry import is_supported_url
+from bot.downloaders.registry import is_supported_url
 
 logger = logging.getLogger(__name__)
 

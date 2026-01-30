@@ -2,7 +2,7 @@ import asyncio
 import logging
 from telegram import Bot  # type: ignore
 
-from bot.workers.downloader import process_job
+from bot.workers.download_worker import process_job
 
 DOWNLOAD_WORKERS = 2
 

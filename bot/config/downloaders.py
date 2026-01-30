@@ -13,6 +13,10 @@ YTDLP_RETRIES = 3
 YTDLP_NO_PLAYLIST = True
 YTDLP_COOKIES_PATH = Path(os.getenv("YTDLP_COOKIES_PATH", "/cookies.txt"))
 
+# youtube errors
+YT_UNAVAILABLE_MAX_ERRORS = 2
+YT_UNAVAILABLE_TIMEFRAME_MINUTES = 30
+
 # Limits
 MAX_DURATION_SECONDS = 3 * 60 * 60      # 3 hours
 MAX_FILE_SIZE_MB = 50                   # Telegram limit-ish

@@ -135,7 +135,7 @@ def init_db():
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 
 				error_type TEXT NOT NULL,
-                -- youtube_403 | youtube_429 | youtube_500 | youtube_503 | youtube_sabr | youtube_unavailable | youtube_live | youtube_unknown
+                -- 403 | 429 | 500 | 503 | sabr | unavailable | live | too_long | fetch_info | unknown
 				video_url TEXT,
 				video_id TEXT,
 
@@ -886,3 +886,15 @@ def get_failed_downloads_last_24h() -> list[dict]:
 			ORDER BY cnt DESC
 		""")
 		return [{"error": r[0], "count": r[1]} for r in cur.fetchall()]
+
+def count_youtube_errors_last_minutes(error_type: list[str], minutes: int) -> int:
+    with get_conn() as conn:
+        placeholders = ','.join('?' for _ in error_type)
+        query = f"""
+            SELECT COUNT(*)
+            FROM youtube_errors
+            WHERE error_type IN ({placeholders})
+                AND created_at >= datetime('now', '-{minutes} minutes')
+        """
+        cur = conn.execute(query, error_type)
+        return cur.fetchone()[0]

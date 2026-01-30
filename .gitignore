@@ -8,3 +8,5 @@ cookies.txt
 /.vscode/*
 /bot/_legacy/
 /bot/_legacy/*
+__pycache__/
+*.pyc

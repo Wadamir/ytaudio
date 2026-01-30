@@ -18,7 +18,6 @@ RUN apt-get update \
 COPY bot/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-# ⬇️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
 COPY bot /app/bot
 
 # YouTube cookies
@@ -26,5 +25,4 @@ COPY cookies.txt /cookies.txt
 
 ENV PYTHONPATH=/app
 
-# ⬇️ КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
 CMD ["python", "-m", "bot.main"]

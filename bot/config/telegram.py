@@ -6,7 +6,7 @@ DEFAULT_PARSE_MODE = ParseMode.HTML
 # Telegram limits
 TELEGRAM_MAX_CAPTION_LENGTH = 1024
 TELEGRAM_MAX_FILENAME_LENGTH = 255
-TELEGRAM_MAX_FILESIZE_MB = 50  # sendAudio without premium
+TELEGRAM_MAX_FILESIZE_MB = 45  # sendAudio without premium
 
 # Behavior
 EDIT_MESSAGE_RETRIES = 2

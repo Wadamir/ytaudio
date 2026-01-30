@@ -1,4 +1,10 @@
 services:
   bot:
+    build: .
+    container_name: tg-ytaudio-bot-dev
+    env_file:
+      - .env
     volumes:
-      - ./bot:/app
+      - ./bot:/app/bot
+    environment:
+      - PYTHONPATH=/app

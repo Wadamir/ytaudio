@@ -22,10 +22,10 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 
 		# Hide the keyboard for new users
-		await update.message.reply_text(
-			" ",
-			reply_markup=ReplyKeyboardRemove()
-		)
+		# await update.message.reply_text(
+		# 	"\u200b",
+		# 	reply_markup=ReplyKeyboardRemove()
+		# )
 	else:
 		# Show menu to returning users
 		await update.message.reply_text(

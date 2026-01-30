@@ -1,72 +1,173 @@
-# ytaudio
-YT-AUDIO is a Telegram bot that allows users to download audio from YouTube videos directly within Telegram. It supports multiple languages and provides an easy-to-use interface for downloading and sharing audio files.
+# 🎧 YT-Audio-Bot
 
+A Telegram bot that downloads audio from YouTube and delivers it in the most suitable way  
+(single file, split parts, or external link).
+
+The project is built with a **clean, extensible architecture**, focusing on separation of concerns,
+explicit error handling, and long-term maintainability.
+
+---
+
+## ✨ Features
+
+- 🎵 Download audio from YouTube using `yt-dlp`
+- ⚡ Automatic fast / slow download mode selection
+- ✂️ Audio post-processing (split large files, convert formats, metadata)
+- 📦 Smart delivery strategy:
+  - single Telegram file
+  - split into multiple parts
+  - fallback to external link
+- 🌍 Multilingual interface (i18n)
+- 🧵 Background workers with queue
+- 📊 Download statistics & error tracking
+- 🐳 Docker support (development & production)
+
+---
+
+## 🧠 Design Principles
+
+This project follows several core principles:
+
+- **Separation of concerns**  
+  Each layer has a single responsibility.
+
+- **Explicit domain errors**  
+  Downloaders raise meaningful exceptions instead of silently failing.
+
+- **Worker-driven orchestration**  
+  All business decisions happen in workers, not in handlers or downloaders.
+
+- **Extensibility first**  
+  New platforms (YouTube, TikTok, SoundCloud, etc.) can be added with minimal effort.
+
+---
+
+## 📁 Project Structure
+
+```text
 YT-AUDIO-BOT/
-├── bot/                         # Main application source code
-│   │
-│   ├── admin/                   # Admin-related functionality
-│   │   ├── __init__.py
-│   │   └── stats.py              # Bot statistics and admin analytics
-│   │
-│   ├── assets/                  # Static assets
-│   │   └── youtube_placeholder.jpg
-│   │
-│   ├── config/                  # Application configuration & bootstrap
-│   │   ├── __init__.py
-│   │   ├── app.py                # App initialization and wiring
-│   │   ├── bot.py                # Telegram bot setup
-│   │   ├── downloader.py         # Downloader configuration
-│   │   ├── telegram.py           # Telegram client configuration
-│   │   ├── text.py               # Global text constants
-│   │   └── utils.py              # Config-level helpers
-│   │
-│   ├── db/                      # Database layer
-│   │   └── db.py                 # Database connection and queries
-│   │
-│   ├── handlers/                # Telegram update handlers
-│   │   ├── __init__.py
-│   │   ├── callbacks.py          # Inline button callbacks
-│   │   ├── commands.py           # Bot commands (/start, /help, etc.)
-│   │   └── messages.py           # Text and media message handlers
-│   │
-│   ├── i18n/                    # Internationalization (locales)
-│   │   ├── en.py                 # English translations
-│   │   ├── ru.py                 # Russian translations
-│   │   ├── helpers.py            # i18n helper functions
-│   │   ├── keyboards.py          # Localized keyboards
-│   │   ├── service.py            # Locale service logic
-│   │   └── validate.py           # Translation validation
-│   │
-│   ├── parsers/                 # External media parsers
-│   │   ├── __init__.py
-│   │   ├── base.py               # Base parser abstraction
-│   │   ├── registry.py           # Parser registry / factory
-│   │   └── youtube.py            # YouTube parser implementation
-│   │
-│   ├── utils/                   # Shared utility functions
-│   │   ├── format.py             # Formatting helpers
-│   │   ├── text.py               # Text utilities
-│   │   └── time.py               # Time and date helpers
-│   │
-│   ├── workers/                 # Background workers
-│   │   ├── __init__.py
-│   │   ├── downloader.py         # Media download worker
-│   │   └── queue.py              # Task queue management
-│   │
-│   └── main.py                  # Application entry point
+├── bot/
+│ ├── admin/ # Admin-side utilities (stats, maintenance tools)
+│ │ └── stats.py
+│ │
+│ ├── assets/ # Static assets (images, placeholders)
+│ │ └── youtube_placeholder.jpg
+│ │
+│ ├── config/ # Application configuration
+│ │ ├── app.py # App-level settings
+│ │ ├── bot.py # Bot configuration
+│ │ ├── downloaders.py # Downloader-related constants
+│ │ ├── network.py # Network / IP configuration
+│ │ ├── telegram.py # Telegram limits and settings
+│ │ ├── text.py # Text-related config
+│ │ └── utils.py
+│ │
+│ ├── db/ # Database layer
+│ │ └── db.py # Queries, logging, counters
+│ │
+│ ├── downloaders/ # Platform-specific downloaders
+│ │ ├── base.py # BaseDownloader + DownloadContext
+│ │ ├── errors.py # Domain-specific downloader errors
+│ │ ├── registry.py # Downloader resolver by URL
+│ │ └── youtube.py # YouTube downloader (yt-dlp based)
+│ │
+│ ├── handlers/ # Telegram update handlers
+│ │ ├── commands.py # /start, /help, etc.
+│ │ ├── messages.py # Text / URL messages
+│ │ └── callbacks.py # Inline keyboard callbacks
+│ │
+│ ├── i18n/ # Internationalization (i18n)
+│ │ ├── en.py
+│ │ ├── ru.py
+│ │ ├── helpers.py # Translation helpers
+│ │ ├── keyboards.py # Localized keyboards
+│ │ ├── service.py # Language service
+│ │ └── validate.py
+│ │
+│ ├── pipeline/ # Processing & delivery pipeline
+│ │ ├── postprocess.py # Audio post-processing (split, convert, tag)
+│ │ ├── delivery.py # Delivery strategies (telegram / split / link)
+│ │ └── types.py # Pipeline enums and DTOs
+│ │
+│ ├── utils/ # Shared utility functions
+│ │ ├── format.py # Duration / size formatting
+│ │ ├── text.py # Text sanitizing
+│ │ └── time.py
+│ │
+│ ├── workers/ # Background workers
+│ │ ├── download_worker.py # Main job orchestrator
+│ │ ├── queue.py # Download queue & workers pool
+│ │ └── main.py # Worker entrypoint
+│ │
+│ └── main.py # Bot entrypoint
 │
-├── nginx/                       # Nginx configuration
-│   └── nginx.conf
+├── nginx/ # Nginx configuration (production)
+│ └── nginx.conf
 │
-├── storage/                     # Persistent storage (downloads, temp files)
+├── storage/ # Persistent storage (audio, db, logs)
 │
-├── docker-compose.yml           # Production Docker Compose
-├── docker-compose.dev.yml       # Development Docker Compose
-├── Dockerfile                   # Docker image definition
-│
-├── .dockerignore
-├── .env                         # Environment variables
-├── .gitignore
-├── cookies.txt                  # Cookies for external services (e.g. YouTube)
-├── requirements.txt             # Python dependencies
-└── README.md
+├── docker-compose.yml # Production compose
+├── docker-compose.dev.yml # Development compose
+├── Dockerfile
+├── requirements.txt
+├── README.md
+└── cookies.txt # YouTube cookies (optional and should NOT be committed to public repo)
+```
+
+---
+
+## 🧩 Architecture Overview
+
+### Downloaders (`bot/downloaders`)
+
+Responsible for:
+- fetching video metadata
+- downloading raw audio files
+
+They never:
+- send Telegram messages
+- decide delivery strategy
+
+### Workers (`bot/workers`)
+Orchestrate jobs, handle errors, post-process files and deliver results.
+
+### Pipeline (`bot/pipeline`)
+Contains post-processing and delivery logic.
+
+### Handlers (`bot/handlers`)
+Handle Telegram updates and enqueue jobs only.
+
+---
+
+## 🔄 Processing Flow
+
+```text
+Telegram Update → Handler → Queue → Worker → Downloader → Post-process → Delivery
+```
+
+---
+
+## 🐳 Running with Docker
+
+### Development
+```bash
+docker compose -f docker-compose.dev.yml up --build
+```
+
+### Production
+```bash
+docker compose up -d --build
+```
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome.
+Please keep changes focused and consistent with the architecture.
+
+---
+
+## 📄 License
+
+MIT License
