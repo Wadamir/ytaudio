@@ -73,9 +73,9 @@ class YouTubeDownloader(BaseDownloader):
 		if os.getenv("APP_ENV") == "prod":
 			if self._should_use_secondary_ip():
 				logger.info("[downloader] Using secondary IP for yt-dlp")
-				opts["source_address"] = SECONDARY_IPv4
+				opts["proxy"] = YT_PROXY_SECONDARY
 			else:
-				opts["source_address"] = PRIMARY_IPv4
+				opts["proxy"] = YT_PROXY_PRIMARY
 
 		return opts
 

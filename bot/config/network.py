@@ -1,4 +1,4 @@
 import os
 
-PRIMARY_IPv4 = os.getenv("PRIMARY_IPV4", "192.168.0.1")
-SECONDARY_IPv4 = os.getenv("SECONDARY_IPV4", "192.168.0.2")
+YT_PROXY_PRIMARY = os.getenv("YT_PROXY_PRIMARY", "socks5://host.docker.internal:1080")
+YT_PROXY_SECONDARY = os.getenv("YT_PROXY_SECONDARY", "socks5://host.docker.internal:1081")
