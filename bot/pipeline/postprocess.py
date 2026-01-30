@@ -73,6 +73,7 @@ async def postprocess(ctx: DownloadContext):
 
 	if size_mb <= TELEGRAM_MAX_FILESIZE_MB:
 		ctx.delivery_method = "telegram"
+		ctx.output_files = [file]
 		return
 
 	# 🔪 need split
