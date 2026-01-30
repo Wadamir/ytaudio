@@ -134,10 +134,15 @@ def init_db():
 			CREATE TABLE IF NOT EXISTS youtube_errors (
 				id INTEGER PRIMARY KEY AUTOINCREMENT,
 
-				error_type TEXT NOT NULL,
-                -- 403 | 429 | 500 | 503 | sabr | unavailable | live | too_long | fetch_info | unknown
 				video_url TEXT,
-				video_id TEXT,
+				video_id TEXT,			   
+
+				ua_profile TEXT,
+				-- desktop | android | ios | etc.
+
+				error_type TEXT NOT NULL,
+				-- 403 | 429 | 500 | 503 | sabr | unavailable | live | too_long | fetch_info | unknown
+				error_message TEXT,
 
 				created_at TEXT NOT NULL
 			)
@@ -147,6 +152,18 @@ def init_db():
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_youtube_errors_type_date
 			ON youtube_errors (error_type, created_at)
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_youtube_errors_created_at
+			ON youtube_errors(created_at);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_youtube_errors_type_time
+			ON youtube_errors(error_type, created_at);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_youtube_errors_ua_time
+			ON youtube_errors(ua_profile, created_at);		
 		""")
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_downloads_created_at
@@ -388,14 +405,14 @@ def get_total_new_users_today() -> int:
 	
 
 def get_total_active_users_today() -> int:
-    now = utc_today_iso()
-    with get_conn() as conn:
-        cur = conn.execute("""
-            SELECT COUNT(*)
-            FROM users
-            WHERE DATE(last_seen) = ?
-        """, (now,))
-        return cur.fetchone()[0]
+	now = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM users
+			WHERE DATE(last_seen) = ?
+		""", (now,))
+		return cur.fetchone()[0]
 # def get_total_users_week() -> int:
 # 	now = utc_today_iso()
 # 	with get_conn() as conn:
@@ -769,6 +786,8 @@ def log_youtube_error(
 	error_type: str,
 	video_url: Optional[str] = None,
 	video_id: Optional[str] = None,
+	ua_profile: Optional[str] = None,
+	error_message: Optional[str] = None,
 ) -> None:
 	with get_conn() as conn:
 		conn.execute("""
@@ -776,13 +795,17 @@ def log_youtube_error(
 				error_type,
 				video_url,
 				video_id,
+				ua_profile,
+				error_message,
 				created_at
 			)
-			VALUES (?, ?, ?, ?)
+			VALUES (?, ?, ?, ?, ?, ?)
 		""", (
 			error_type,
 			video_url,
 			video_id,
+			ua_profile,
+			error_message,
 			utc_now_iso()
 		))
 		conn.commit()	
@@ -888,13 +911,13 @@ def get_failed_downloads_last_24h() -> list[dict]:
 		return [{"error": r[0], "count": r[1]} for r in cur.fetchall()]
 
 def count_youtube_errors_last_minutes(error_type: list[str], minutes: int) -> int:
-    with get_conn() as conn:
-        placeholders = ','.join('?' for _ in error_type)
-        query = f"""
-            SELECT COUNT(*)
-            FROM youtube_errors
-            WHERE error_type IN ({placeholders})
-                AND created_at >= datetime('now', '-{minutes} minutes')
-        """
-        cur = conn.execute(query, error_type)
-        return cur.fetchone()[0]
+	with get_conn() as conn:
+		placeholders = ','.join('?' for _ in error_type)
+		query = f"""
+			SELECT COUNT(*)
+			FROM youtube_errors
+			WHERE error_type IN ({placeholders})
+				AND created_at >= datetime('now', '-{minutes} minutes')
+		"""
+		cur = conn.execute(query, error_type)
+		return cur.fetchone()[0]

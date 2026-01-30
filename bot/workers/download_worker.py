@@ -164,6 +164,8 @@ async def process_job(job: Dict, bot: Bot):
 				error_type="unavailable",
 				video_id=ctx.video_id,
 				video_url=ctx.video_url,
+				ua_profile=ctx.ua_profile,
+                error_message=ctx.error_message,
 			)
 
 			await bot.edit_message_text(
@@ -180,6 +182,8 @@ async def process_job(job: Dict, bot: Bot):
 				error_type="live",
 				video_id=ctx.video_id,
 				video_url=ctx.video_url,
+				ua_profile=ctx.ua_profile,
+				error_message=ctx.error_message,
 			)
 
 			await bot.edit_message_text(
@@ -196,6 +200,8 @@ async def process_job(job: Dict, bot: Bot):
 				error_type="too_long",
 				video_id=ctx.video_id,
 				video_url=ctx.video_url,
+				ua_profile=ctx.ua_profile,
+				error_message=ctx.error_message,
 			)
 
 			await bot.edit_message_text(
@@ -212,6 +218,8 @@ async def process_job(job: Dict, bot: Bot):
 				error_type="fetch_info",
 				video_id=ctx.video_id,
 				video_url=ctx.video_url,
+				ua_profile=ctx.ua_profile,
+				error_message=ctx.error_message,
 			)
 
 			await bot.edit_message_text(
@@ -228,6 +236,8 @@ async def process_job(job: Dict, bot: Bot):
 				error_type="unknown",
 				video_id=ctx.video_id,
 				video_url=ctx.video_url,
+				ua_profile=ctx.ua_profile,
+				error_message=ctx.error_message,
 			)
 
 			await bot.edit_message_text(

@@ -3,6 +3,7 @@ import os
 import yt_dlp # type: ignore
 import asyncio
 import logging
+import random
 
 from pathlib import Path
 from typing import Dict, Literal, Optional
@@ -22,8 +23,33 @@ from .utils import notify
 logger = logging.getLogger(__name__)
 
 
-
 yt_errors = ["youtube_403", "youtube_429", "youtube_503", "youtube_sabr"]
+
+
+USER_AGENT_PROFILES = {
+	"desktop_chrome": {
+		"user_agent": (
+			"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+			"AppleWebKit/537.36 (KHTML, like Gecko) "
+			"Chrome/120.0.0.0 Safari/537.36"
+		),
+	},
+	"android": {
+		"user_agent": (
+			"Mozilla/5.0 (Linux; Android 13; Pixel 7) "
+			"AppleWebKit/537.36 (KHTML, like Gecko) "
+			"Chrome/120.0.0.0 Mobile Safari/537.36"
+		),
+	},
+	"ios": {
+		"user_agent": (
+			"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+			"AppleWebKit/605.1.15 (KHTML, like Gecko) "
+			"Version/17.0 Mobile/15E148 Safari/604.1"
+		),
+	},
+}
+
 
 @dataclass
 class DownloadPlan:
@@ -49,8 +75,32 @@ class YouTubeDownloader(BaseDownloader):
 				minutes=YT_UNAVAILABLE_TIMEFRAME_MINUTES,
 			) >= YT_UNAVAILABLE_MAX_ERRORS
 		)
+	
+	def _pick_ua_profile(self) -> str:
+		# For future use: pick different UA profiles based on some criteria
+		# 70% desktop
+		# 20% android
+		# 10% ios
+		roll = random.random()
+		if roll < 0.7:
+			return "desktop_chrome"
+		elif roll < 0.9:
+			return "android"
+		else:
+			return "ios"
+		
+	def _base_opts(self, ctx: Optional[DownloadContext] = None):
+		if ctx.ua_profile:
+			ua_profile = ctx.ua_profile
+		else:
+			ua_profile = self._pick_ua_profile()
+			ctx.ua_profile = ua_profile
 
-	def _base_opts(self):
+		profile = USER_AGENT_PROFILES.get(ua_profile, USER_AGENT_PROFILES["desktop_chrome"])
+
+		if ctx:
+			ctx.ua_profile = ua_profile
+
 		opts = {
 			"cookies": str(YTDLP_COOKIES_PATH),
 			"quiet": True,
@@ -63,11 +113,7 @@ class YouTubeDownloader(BaseDownloader):
 			"sleep_interval": 1,
 			"max_sleep_interval": 5,
 			"http_headers": {
-				"User-Agent": (
-					"Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-					"AppleWebKit/537.36 (KHTML, like Gecko) "
-					"Chrome/120.0.0.0 Safari/537.36"
-				)
+				"User-Agent": profile["user_agent"]
 			},		
 		}
 		if os.getenv("APP_ENV") == "prod":
@@ -79,17 +125,17 @@ class YouTubeDownloader(BaseDownloader):
 
 		return opts
 
-	def _fast_mode_opts(self, plan: DownloadPlan):
+	def _fast_mode_opts(self, plan: DownloadPlan, ctx: DownloadContext):
 		return {
-			**self._base_opts(),
+			**self._base_opts(ctx),
 			"format": "bestaudio[ext=m4a]/bestaudio",
 			"outtmpl": str(plan.out_dir / f"{plan.tmp_id}.%(ext)s"),
 			"postprocessors": [],
 		}
 
-	def _slow_mode_opts(self, plan: DownloadPlan):
+	def _slow_mode_opts(self, plan: DownloadPlan, ctx: DownloadContext):
 		return {
-			**self._base_opts(),
+			**self._base_opts(ctx),
 			"format": "bestaudio/best",
 			"outtmpl": str(plan.out_dir / f"{plan.tmp_id}.%(ext)s"),
 			"postprocessors": [
@@ -136,8 +182,8 @@ class YouTubeDownloader(BaseDownloader):
 
 		raise last_exc
 	
-	async def _fetch_info(self, url: str) -> Dict:
-		opts = self._base_opts()
+	async def _fetch_info(self, url: str, ctx: DownloadContext) -> Dict:
+		opts = self._base_opts(ctx)
 		opts["skip_download"] = True
 		return await asyncio.to_thread(
 			lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
@@ -150,7 +196,7 @@ class YouTubeDownloader(BaseDownloader):
 
 		# 1. Get info
 		try:
-			info = await self._fetch_info(url)		
+			info = await self._fetch_info(url, ctx)		
 		except Exception as e:
 			if "unavailable" in str(e).lower() or "not available" in str(e).lower():
 				raise VideoUnavailable(f"Video is unavailable: {e}") from e
@@ -207,9 +253,9 @@ class YouTubeDownloader(BaseDownloader):
 
 		# 5. yt-dlp download (with retry)
 		if plan.mode == "fast_mode":
-			opts = self._fast_mode_opts(plan)
+			opts = self._fast_mode_opts(plan, ctx)
 		else:
-			opts = self._slow_mode_opts(plan)
+			opts = self._slow_mode_opts(plan, ctx)
 		
 		try:
 			notify(ctx, DownloadStage.DOWNLOADING)

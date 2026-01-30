@@ -39,6 +39,7 @@ class DownloadContext:
 	# errors
 	fallback_reason: Optional[str] = None
 	error_message: Optional[str] = None
+	ua_profile: Optional[str] = None
 	
     #stages
 	on_progress: Optional[ProgressCallback] = None
