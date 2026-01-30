@@ -10,10 +10,12 @@ services:
       - ./storage/db:/storage/db
     networks:
       - ytaudio_net
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PYTHONPATH=/app
-      - YT_PROXY_PRIMARY=socks5://127.0.0.1:1080
-      - YT_PROXY_SECONDARY=socks5://127.0.0.1:1081
+      - YT_PROXY_PRIMARY=socks5h://host.docker.internal:1080
+      - YT_PROXY_SECONDARY=socks5h://host.docker.internal:1081
 
   nginx:
     image: nginx:alpine
