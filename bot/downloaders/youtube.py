@@ -58,7 +58,7 @@ class YouTubeDownloader(BaseDownloader):
 			"retries": YTDLP_RETRIES,
 			"fragment_retries": 3,
 			"noplaylist": YTDLP_NO_PLAYLIST,
-			"js_runtime": ["node"],
+			"js_runtime": ["node", "/usr/bin/node"],
 			"concurrent_fragment_downloads": 1,
 			"sleep_interval": 1,
 			"max_sleep_interval": 5,
