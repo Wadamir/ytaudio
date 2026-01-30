@@ -37,23 +37,23 @@ async def deliver(ctx: DownloadContext, bot: Bot, chat_id: int):
             bot, 
             chat_id, 
             ctx.output_files[0], 
-            title=ctx.title, 
-            performer=ctx.performer,
+            title=ctx.video_title, 
+            performer=ctx.video_artist,
             caption=bot_caption
         )
 
     elif ctx.delivery_method == "telegram_split":
         for part in ctx.output_files:
-            part_title = ctx.title
+            part_title = ctx.video_title
             if len(ctx.output_files) > 1:
                 part_index = ctx.output_files.index(part) + 1
-                part_title = f"Part {part_index}/{len(ctx.output_files)} - {ctx.title}"
+                part_title = f"Part {part_index}/{len(ctx.output_files)} - {ctx.video_title}"
             await _send_audio_telegram(
                 bot, 
                 chat_id, 
                 part, 
                 title=part_title, 
-                performer=ctx.performer, 
+                performer=ctx.video_artist, 
                 caption=bot_caption
             )
 

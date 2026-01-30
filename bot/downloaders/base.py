@@ -18,6 +18,7 @@ class DownloadContext:
 	# video info
 	video_id: Optional[str] = None
 	video_title: Optional[str] = None
+	video_artist: Optional[str] = 'YouTube'
 	duration_seconds: Optional[int] = None
 
 	# processing
