@@ -98,7 +98,7 @@ async def process_job(job: Dict, bot: Bot):
 					),
 				)
 
-			elif stage == DownloadStage.STARTING_DOWNLOAD:
+			elif stage == DownloadStage.STARTING_DOWNLOAD or stage == DownloadStage.DOWNLOADING:
 				await bot.edit_message_text(
 					chat_id=chat_id,
 					message_id=message_id,
@@ -332,6 +332,11 @@ async def process_job(job: Dict, bot: Bot):
 					ctx.user_id,
 					ctx.processing_time_ms,
 				)
+				await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=tr_user(user_id, "job_completed"),
+                )
 			else:
 				logger.info(
 					"[worker] job failed for %s in %d ms: %s",
