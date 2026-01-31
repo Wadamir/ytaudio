@@ -448,6 +448,37 @@ def get_top_users(limit: int = 10) -> list[dict]:
 				"downloads_count": row[4],
 			})
 		return users
+	
+
+def get_top_users_today(limit: int = 10) -> list[dict]:
+	today = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				u.user_id,
+				u.username,
+				u.first_name,
+				u.last_name,
+				COUNT(d.id) AS downloads_count
+			FROM users u
+			JOIN downloads d ON u.user_id = d.user_id
+			WHERE d.status = 'success'
+				AND DATE(d.created_at) = ?
+			GROUP BY u.user_id
+			ORDER BY downloads_count DESC
+			LIMIT ?
+		""", (today, limit))
+		rows = cur.fetchall()
+		users = []
+		for row in rows:
+			users.append({
+				"user_id": row[0],
+				"username": row[1],
+				"first_name": row[2],
+				"last_name": row[3],
+				"downloads_count": row[4],
+			})
+		return users
 
 
 
@@ -685,6 +716,26 @@ def get_downloads_by_delivery_methods() -> dict[str, int]:
 		return methods	
 
 
+def get_total_failures() -> int:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM downloads
+			WHERE status = 'failed'
+		""")
+		return cur.fetchone()[0]
+
+def get_total_failures_today() -> int:
+	today = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM downloads
+			WHERE status = 'failed'
+				AND DATE(created_at) = ?
+		""", (today,))
+		return cur.fetchone()[0]
+
 def get_failure_rate() -> Optional[float]:
 	with get_conn() as conn:
 		cur = conn.execute("""
@@ -693,6 +744,25 @@ def get_failure_rate() -> Optional[float]:
 				COUNT(*) as total_count
 			FROM downloads
 		""")
+		row = cur.fetchone()
+		failed_count = row[0]
+		total_count = row[1]
+
+		if total_count == 0:
+			return None
+		else:
+			return (failed_count / total_count) * 100.0
+
+def get_failure_rate_today() -> Optional[float]:
+	today = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as failed_count,
+				COUNT(*) as total_count
+			FROM downloads
+			WHERE DATE(created_at) = ?
+		""", (today,))
 		row = cur.fetchone()
 		failed_count = row[0]
 		total_count = row[1]

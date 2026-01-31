@@ -10,7 +10,7 @@ TEXTS = {
 	"queue": "⏳ Task added to queue. Please wait.",
 	"reading_info": "🔍 Reading video information…",
 
-    "info_ready": "✅ Video information ready. Duration: {duration}",
+    "info_ready": "✅ Video information ready. Duration: {duration}\n⬇️ Proceeding to download audio…",
 
 	"fast_mode": "⚡ Downloading audio (fast mode) Duration: {duration}...",
 	"slow_mode": "⬇️ Downloading audio (re-encoding) Duration: {duration}... Please be patient...",
@@ -27,7 +27,7 @@ TEXTS = {
 
     "failed_processing": "❌ Failed to process audio. Please try again later.",
     "file_too_large": "❌ The resulting file is too large for Telegram upload.",
-	"failed_sending_audio": "❌ Failed to send audio.",
+	"failed_sending_audio": "❌ Failed to send audio. Please try again later.",
     "failed_create_link": "❌ Failed to create download link.",
 
 
