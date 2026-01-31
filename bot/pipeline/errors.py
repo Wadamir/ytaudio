@@ -27,3 +27,7 @@ class FileTooLarge(PipelineError):
 class DeliveryFailed(PipelineError):
     """Delivery of the file failed."""
     pass
+
+class DeliveryUnsupportedMethod(PipelineError):
+    """The specified delivery method is unsupported."""
+    pass

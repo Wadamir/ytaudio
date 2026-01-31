@@ -5,7 +5,7 @@ from telegram import Bot  # type: ignore
 from telegram.error import TelegramError  # type: ignore
 
 from bot.downloaders.base import DownloadContext
-from .errors import DeliveryFailed
+from .errors import DeliveryFailed, DeliveryUnsupportedMethod
 
 from bot.config.bot import (
     BOT_USERNAME,
@@ -33,18 +33,7 @@ async def deliver(ctx: DownloadContext, bot: Bot, chat_id: int):
     if not ctx.output_files:
         raise DeliveryFailed("No output files to deliver")
 
-    if ctx.delivery_method == "telegram":
-        await _send_audio_telegram(
-            bot, 
-            chat_id, 
-            ctx.output_files[0], 
-            title=ctx.video_title, 
-            performer=ctx.video_artist,
-            duration=ctx.duration_seconds,
-            caption=bot_caption
-        )
-
-    elif ctx.delivery_method == "telegram_split":
+    if ctx.delivery_method == "telegram" or ctx.delivery_method == "telegram_split":
         for part in ctx.output_files:
             part_title = ctx.video_title
             part_duration = ctx.duration_seconds / len(ctx.output_files) if ctx.duration_seconds else 0
@@ -65,4 +54,4 @@ async def deliver(ctx: DownloadContext, bot: Bot, chat_id: int):
         raise DeliveryFailed("Link delivery not implemented")
 
     else:
-        raise DeliveryFailed(f"Unsupported delivery method: {ctx.delivery_method}")
+        raise DeliveryUnsupportedMethod(f"Unsupported delivery method: {ctx.delivery_method}")
