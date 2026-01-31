@@ -16,7 +16,7 @@ explicit error handling, and long-term maintainability.
 - 📦 Smart delivery strategy:
   - single Telegram file
   - split into multiple parts
-  - fallback to external link
+  - fallback to external link (removed)
 - 🌍 Multilingual interface (i18n)
 - 🧵 Background workers with queue
 - 📊 Download statistics & error tracking
@@ -45,73 +45,83 @@ This project follows several core principles:
 ## 📁 Project Structure
 
 ```text
-YT-AUDIO-BOT/
+ytaudio/
 ├── bot/
-│ ├── admin/ # Admin-side utilities (stats, maintenance tools)
-│ │ └── stats.py
-│ │
-│ ├── assets/ # Static assets (images, placeholders)
-│ │ └── youtube_placeholder.jpg
-│ │
-│ ├── config/ # Application configuration
-│ │ ├── app.py # App-level settings
-│ │ ├── bot.py # Bot configuration
-│ │ ├── downloaders.py # Downloader-related constants
-│ │ ├── network.py # Network / IP configuration
-│ │ ├── telegram.py # Telegram limits and settings
-│ │ ├── text.py # Text-related config
-│ │ └── utils.py
-│ │
-│ ├── db/ # Database layer
-│ │ └── db.py # Queries, logging, counters
-│ │
-│ ├── downloaders/ # Platform-specific downloaders
-│ │ ├── base.py # BaseDownloader + DownloadContext
-│ │ ├── errors.py # Domain-specific downloader errors
-│ │ ├── registry.py # Downloader resolver by URL
-│ │ └── youtube.py # YouTube downloader (yt-dlp based)
-│ │
-│ ├── handlers/ # Telegram update handlers
-│ │ ├── commands.py # /start, /help, etc.
-│ │ ├── messages.py # Text / URL messages
-│ │ └── callbacks.py # Inline keyboard callbacks
-│ │
-│ ├── i18n/ # Internationalization (i18n)
-│ │ ├── en.py
-│ │ ├── ru.py
-│ │ ├── helpers.py # Translation helpers
-│ │ ├── keyboards.py # Localized keyboards
-│ │ ├── service.py # Language service
-│ │ └── validate.py
-│ │
-│ ├── pipeline/ # Processing & delivery pipeline
-│ │ ├── postprocess.py # Audio post-processing (split, convert, tag)
-│ │ ├── delivery.py # Delivery strategies (telegram / split / link)
-│ │ └── types.py # Pipeline enums and DTOs
-│ │
-│ ├── utils/ # Shared utility functions
-│ │ ├── format.py # Duration / size formatting
-│ │ ├── text.py # Text sanitizing
-│ │ └── time.py
-│ │
-│ ├── workers/ # Background workers
-│ │ ├── download_worker.py # Main job orchestrator
-│ │ ├── queue.py # Download queue & workers pool
-│ │ └── main.py # Worker entrypoint
-│ │
-│ └── main.py # Bot entrypoint
+│   ├── admin/
+│   │   ├── __init__.py
+│   │   └── stats.py
+│   │
+│   ├── assets/
+│   │   └── youtube_placeholder.jpg
+│   │
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── app.py
+│   │   ├── bot.py
+│   │   ├── downloaders.py
+│   │   ├── network.py
+│   │   ├── telegram.py
+│   │   ├── text.py
+│   │   └── utils.py
+│   │
+│   ├── db/
+│   │   └── db.py
+│   │
+│   ├── downloaders/
+│   │   ├── __init__.py
+│   │   ├── base.py
+│   │   ├── errors.py
+│   │   ├── registry.py
+│   │   ├── stages.py
+│   │   ├── utils.py
+│   │   └── youtube.py
+│   │
+│   ├── handlers/
+│   │   ├── __init__.py
+│   │   ├── callbacks.py
+│   │   ├── commands.py
+│   │   └── messages.py
+│   │
+│   ├── i18n/
+│   │   ├── en.py
+│   │   ├── ru.py
+│   │   ├── helpers.py
+│   │   ├── keyboards.py
+│   │   ├── service.py
+│   │   └── validate.py
+│   │
+│   ├── pipeline/
+│   │   ├── delivery.py
+│   │   ├── errors.py
+│   │   ├── postprocess.py
+│   │   └── types.py
+│   │
+│   ├── utils/
+│   │   ├── format.py
+│   │   ├── text.py
+│   │   └── time.py
+│   │
+│   ├── workers/
+│   │   ├── __init__.py
+│   │   ├── download_worker.py
+│   │   └── queue.py
+│   │
+│   └── main.py
 │
-├── nginx/ # Nginx configuration (production)
-│ └── nginx.conf
+├── nginx/
+│   └── nginx.conf
 │
-├── storage/ # Persistent storage (audio, db, logs)
+├── storage/
 │
-├── docker-compose.yml # Production compose
-├── docker-compose.dev.yml # Development compose
+├── cookies.txt
+├── .env
+├── .dockerignore
+├── .gitignore
+├── docker-compose.yml
+├── docker-compose.dev.yml
 ├── Dockerfile
-├── requirements.txt
 ├── README.md
-└── cookies.txt # YouTube cookies (optional and should NOT be committed to public repo)
+└── requirements.txt
 ```
 
 ---
