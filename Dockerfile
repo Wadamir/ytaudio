@@ -1,28 +1,24 @@
-FROM python:3.11-slim
+FROM node:20-bookworm-slim
 
 ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
 # System deps
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
     ffmpeg \
     ca-certificates \
-    curl \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Python deps
 COPY bot/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
 
+# App
 COPY bot /app/bot
-
-# YouTube cookies
 COPY cookies.txt /cookies.txt
 
 ENV PYTHONPATH=/app
 
-CMD ["python", "-m", "bot.main"]
+CMD ["python3", "-m", "bot.main"]
