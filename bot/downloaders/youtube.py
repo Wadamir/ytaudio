@@ -122,7 +122,7 @@ class YouTubeDownloader(BaseDownloader):
 			},		
 			"extractor_args": {
                 "youtube": {
-                    "player_client": ["web", "android", "ios"],
+                    "player_client": ["web", "android"],
                 }
             },
 		}
