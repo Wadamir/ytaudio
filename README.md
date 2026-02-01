@@ -14,9 +14,9 @@ explicit error handling, and long-term maintainability.
 - ⚡ Automatic fast / slow download mode selection
 - ✂️ Audio post-processing (split large files, convert formats, metadata)
 - 📦 Smart delivery strategy:
-  - single Telegram file
-  - split into multiple parts
-  - fallback to external link (removed)
+    - single Telegram file
+    - split into multiple parts
+    - fallback to external link (removed)
 - 🌍 Multilingual interface (i18n)
 - 🧵 Background workers with queue
 - 📊 Download statistics & error tracking
@@ -49,6 +49,7 @@ ytaudio/
 ├── bot/
 │   ├── admin/
 │   │   ├── __init__.py
+│   │   ├── keyboard.py                 # Admin keyboard layout
 │   │   └── stats.py
 │   │
 │   ├── assets/
@@ -86,9 +87,12 @@ ytaudio/
 │   │   ├── en.py
 │   │   ├── ru.py
 │   │   ├── helpers.py
-│   │   ├── keyboards.py
+│   │   ├── keyboards.py                # User keyboard layout
 │   │   ├── service.py
 │   │   └── validate.py
+|   |
+│   ├── keyboards/
+│   │   └── main.py
 │   │
 │   ├── pipeline/
 │   │   ├── delivery.py
@@ -131,20 +135,25 @@ ytaudio/
 ### Downloaders (`bot/downloaders`)
 
 Responsible for:
+
 - fetching video metadata
 - downloading raw audio files
 
 They never:
+
 - send Telegram messages
 - decide delivery strategy
 
 ### Workers (`bot/workers`)
+
 Orchestrate jobs, handle errors, post-process files and deliver results.
 
 ### Pipeline (`bot/pipeline`)
+
 Contains post-processing and delivery logic.
 
 ### Handlers (`bot/handlers`)
+
 Handle Telegram updates and enqueue jobs only.
 
 ---
@@ -160,11 +169,13 @@ Telegram Update → Handler → Queue → Worker → Downloader → Post-process
 ## 🐳 Running with Docker
 
 ### Development
+
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
 
 ### Production
+
 ```bash
 docker compose up -d --build
 ```

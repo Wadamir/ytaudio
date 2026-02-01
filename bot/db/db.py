@@ -335,6 +335,14 @@ def register_user(user) -> bool:
 			))
 		conn.commit()
 		return False
+	
+# def is_user_registered(user_id: int) -> bool:
+# 	with get_conn() as conn:
+# 		cur = conn.execute(
+# 			"SELECT user_id FROM users WHERE user_id = ?",
+# 			(user_id,)
+# 		)
+# 		return cur.fetchone() is not None	
 
 def set_user_language(user_id: int, lang: str):
 	with get_conn() as conn:
@@ -520,6 +528,7 @@ def _normalize_user_plan_if_needed(conn, user_id: int) -> None:
 
 def can_user_download(user_id: int) -> tuple[bool, int, int, str]:
 	with get_conn() as conn:
+		# _normalize_user_registration_if_needed(conn, user_id)
 		_normalize_user_plan_if_needed(conn, user_id)
 
 		cur = conn.execute("""

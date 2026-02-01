@@ -2,7 +2,7 @@ import logging
 from telegram import Update # type: ignore
 from telegram.ext import ContextTypes # type: ignore
 
-from typing import Optional
+# from typing import Optional
 from bot.config.app import ADMIN_USER_ID
 
 from bot.db.db import (
@@ -150,6 +150,104 @@ def build_admin_stats_text() -> str:
 	return "\n".join(lines)
 
 
+def build_users_stats_text() -> str:
+    # --- Users ---
+    users_total = get_total_users()
+    users_today = get_total_new_users_today()
+    users_active_today = get_total_active_users_today()
+    # new_week = get_total_users_week()
+    top_users = get_top_users(10)
+    top_users_today = get_top_users_today(10)
+
+    # --------------------------------------------------
+    # Formatting
+    # --------------------------------------------------
+    lines = []
+
+    lines.append("👥 <b>Users Stats</b>\n")
+
+    lines.append(f"• Total users: <b>{users_total}</b>")
+    lines.append(f"• New users today: <b>{users_today}</b>")
+    lines.append(f"• Active users today: <b>{users_active_today}</b>\n")
+
+    if top_users_today:
+        lines.append("• Top users today:")
+        for u in top_users_today:
+            name = u["username"] or u["first_name"] or str(u["user_id"])
+            lines.append(f"  – {name}: {fmt_int(u['downloads_count'])}")
+        lines.append("")
+
+    if top_users:
+        lines.append("• All-time top users:")
+        for u in top_users:
+            name = u["username"] or u["first_name"] or str(u["user_id"])
+            lines.append(f"  – {name}: {fmt_int(u['downloads_count'])}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def build_downloads_stats_text() -> str:
+	# --- Downloads ---
+	total_dl = get_total_downloads(success_only=True)
+	dl_today = get_total_downloads_today()
+
+	failure_total = get_total_failures()
+	failure_today = get_total_failures_today()
+
+	failure_rate_today = get_failure_rate_today()
+
+	by_delivery = get_downloads_by_delivery_methods()
+	latency_by_mode = get_latency_stats()
+
+	# --------------------------------------------------
+	# Formatting
+	# --------------------------------------------------
+	lines = []
+
+	lines.append("📥 <b>Downloads Stats</b>\n")
+
+	# 📊 Summary
+	lines.append("📊 <b>Summary</b>")
+	lines.append(f"• Total downloads: <b>{fmt_int(total_dl)}</b>")
+	lines.append(f"• Downloads today: <b>{fmt_int(dl_today)}</b>")
+	lines.append(f"• Failures (total / today): <b>{fmt_int(failure_total)} / {fmt_int(failure_today)}</b>")
+
+	if failure_rate_today is not None:
+		if failure_rate_today < 5:
+			icon = "🟢"
+		elif failure_rate_today < 10:
+			icon = "🟡"
+		else:
+			icon = "🔴"
+
+		lines.append(
+			f"• Failure rate today: {icon} <b>{failure_rate_today:.2f}%</b>"
+		)
+
+	lines.append("")
+
+	# 🚚 Delivery methods
+	if by_delivery:
+		lines.append("🚚 <b>Delivery methods</b>")
+		for method, count in by_delivery.items():
+			label = LABELS.get(method, method)
+			lines.append(f"• {label}: <b>{fmt_int(count)}</b>")
+		lines.append("")
+
+	# ⚡ Performance by mode
+	if latency_by_mode:
+		lines.append("⚡ <b>Processing time by mode</b>")
+		for mode, data in latency_by_mode.items():
+			mode_label = LABELS.get(mode, mode)
+			lines.append(
+				f"• {mode_label}: {fmt_int(data['count'])} | "
+				f"avg {fmt_int(data['avg_processing_time_ms'])} ms"
+			)
+
+	return "\n".join(lines)
+
+
 async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if update.effective_user.id != ADMIN_USER_ID:
 		logger.warning(
@@ -164,3 +262,34 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		parse_mode="HTML",
 		disable_web_page_preview=True,
 	)
+	
+
+async def users_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID:
+        logger.warning(
+            "Unauthorized /users_stats attempt by user %s",
+            update.effective_user.id
+        )		
+        return
+
+    text = build_users_stats_text()
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
+	
+async def downloads_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_USER_ID:
+        logger.warning(
+            "Unauthorized /downloads_stats attempt by user %s",
+            update.effective_user.id
+        )		
+        return
+
+    text = build_downloads_stats_text()
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+    )
