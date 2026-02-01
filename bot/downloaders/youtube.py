@@ -108,18 +108,19 @@ class YouTubeDownloader(BaseDownloader):
 			"retries": YTDLP_RETRIES,
 			"fragment_retries": 3,
 			"noplaylist": YTDLP_NO_PLAYLIST,
-			"js_runtimes": {
-				"node": {
-					"path": "/usr/bin/node"
-				},
-			},
-			"remote_components": ["ejs:github"],
+			"js_runtimes": ["node"],
+			# "remote_components": ["ejs:github"],
 			"concurrent_fragment_downloads": 1,
 			"sleep_interval": 1,
 			"max_sleep_interval": 5,
 			"http_headers": {
 				"User-Agent": profile["user_agent"]
 			},		
+			"extractor_args": {
+                "youtube": {
+                    "player_client": ["web", "android", "ios"],
+                }
+            },
 		}
 		if os.getenv("APP_ENV") == "prod":
 			if self._should_use_secondary_ip():
