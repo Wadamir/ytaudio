@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from bot.db.db import count_youtube_errors_last_minutes
 
 from bot.config.downloaders import *
-from bot.config.network import YT_PROXY_PRIMARY, YT_PROXY_SECONDARY
+from bot.config.network import YT_PROXY_PRIMARY, YT_PROXY_SECONDARY, YTDLP_JS_RUNTIME_PATH
 
 from .base import BaseDownloader, DownloadContext
 from .errors import DownloaderError, VideoUnavailable, LiveStreamNotSupported, VideoTooLong, DownloadFailed, FetchInfoFailed
@@ -108,7 +108,9 @@ class YouTubeDownloader(BaseDownloader):
 			"retries": YTDLP_RETRIES,
 			"fragment_retries": 3,
 			"noplaylist": YTDLP_NO_PLAYLIST,
-			"js_runtimes": {"node"},
+			"js_runtimes": {
+				"path": YTDLP_JS_RUNTIME_PATH
+            },
 			# "remote_components": ["ejs:github"],
 			"concurrent_fragment_downloads": 1,
 			"sleep_interval": 1,
