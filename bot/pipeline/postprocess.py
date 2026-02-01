@@ -9,10 +9,10 @@ from bot.downloaders.base import DownloadContext
 from bot.config.telegram import (
 	TELEGRAM_MAX_FILESIZE_MB,
 )
-from bot.config.downloaders import (
-	AUDIO_BITRATE_PREFERRED,
-	AUDIO_BITRATE_PREFERRED_ARG,
-)
+# from bot.config.downloaders import (
+# 	AUDIO_BITRATE_PREFERRED,
+# 	AUDIO_BITRATE_PREFERRED_ARG,
+# )
 
 from .errors import PostProcessingFailed, PostProcessingNoDuration
 

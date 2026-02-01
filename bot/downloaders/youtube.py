@@ -263,7 +263,14 @@ class YouTubeDownloader(BaseDownloader):
 			opts = self._slow_mode_opts(plan, ctx)
 		
 		try:
-			notify(ctx, DownloadStage.DOWNLOADING)
+			notify(ctx, DownloadStage.DOWNLOADING,
+                {
+					"duration_seconds": duration,
+                    "processing_mode": ctx.processing_mode,
+                    "chosen_bitrate": ctx.chosen_bitrate,
+                    "estimated_size_mb": ctx.estimated_size_mb,
+                }   
+            )
 
 			await self._download_with_retry(url, opts)
 

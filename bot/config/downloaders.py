@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 # Audio / yt-dlp settings
-AUDIO_FORMAT_PREFERRED = "mp3"
+AUDIO_FORMAT_PREFERRED = "m4a"
 AUDIO_BITRATE_PREFERRED = 64
 AUDIO_BITRATE_PREFERRED_ARG = f"{AUDIO_BITRATE_PREFERRED}k"
 
