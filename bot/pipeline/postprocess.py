@@ -22,7 +22,7 @@ def calculate_part_duration(duration: float, total_parts: int) -> float:
 def calculate_parts(file_size_mb: float, part_size_mb: float = TELEGRAM_MAX_FILESIZE_MB) -> int:
 	return math.ceil(file_size_mb / part_size_mb)
 
-async def split_audio_by_time(
+async def _split_audio_by_time(
 	src: Path,
 	out_dir: Path,
 	part_duration: float,
@@ -35,16 +35,15 @@ async def split_audio_by_time(
 	for i in range(total_parts):
 		out_file = out_dir / f"{prefix}_part{i + 1}.{ext}"
 		start = i * part_duration
-		
+
 		cmd = [
 			"ffmpeg",
 			"-y",
-			"-i", str(src),
 			"-ss", str(start),
 			"-t", str(part_duration),
+			"-i", str(src),
 			"-vn",
-			"-acodec", "libmp3lame",
-			"-ab", f"{AUDIO_BITRATE_PREFERRED}k",
+			"-c:a", "copy",
 			str(out_file),
 		]
 
@@ -56,7 +55,9 @@ async def split_audio_by_time(
 
 		_, stderr = await proc.communicate()
 		if proc.returncode != 0:
-			raise PostProcessingFailed("ffmpeg split failed: " + stderr.decode("utf-8", errors="ignore"))
+			raise PostProcessingFailed(
+				"ffmpeg split failed: " + stderr.decode("utf-8", errors="ignore")
+			)
 
 		parts.append(out_file)
 
@@ -85,7 +86,7 @@ async def postprocess(ctx: DownloadContext):
 	
 	total_parts = calculate_parts(size_mb, TELEGRAM_MAX_FILESIZE_MB)
 
-	parts = await split_audio_by_time(
+	parts = await _split_audio_by_time(
 		src=file,
 		out_dir=file.parent,
 		part_duration=calculate_part_duration(duration, total_parts),
