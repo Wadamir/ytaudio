@@ -45,11 +45,12 @@ This project follows several core principles:
 ## 📁 Project Structure
 
 ```text
-ytaudio/
+YT-AUDIO-BOT/
 ├── bot/
 │   ├── admin/
 │   │   ├── __init__.py
-│   │   ├── keyboard.py                 # Admin keyboard layout
+│   │   ├── actions.py
+│   │   ├── keyboards.py
 │   │   └── stats.py
 │   │
 │   ├── assets/
@@ -66,6 +67,7 @@ ytaudio/
 │   │   └── utils.py
 │   │
 │   ├── db/
+│   │   ├── __init__.py
 │   │   └── db.py
 │   │
 │   ├── downloaders/
@@ -81,26 +83,32 @@ ytaudio/
 │   │   ├── __init__.py
 │   │   ├── callbacks.py
 │   │   ├── commands.py
-│   │   └── messages.py
+│   │   ├── menu.py
+│   │   ├── messages.py
+│   │   └── payments.py
 │   │
 │   ├── i18n/
+│   │   ├── __init__.py
 │   │   ├── en.py
 │   │   ├── ru.py
 │   │   ├── helpers.py
-│   │   ├── keyboards.py                # User keyboard layout
+│   │   ├── keyboards.py
 │   │   ├── service.py
 │   │   └── validate.py
-|   |
+│   │
 │   ├── keyboards/
+│   │   ├── __init__.py
 │   │   └── main.py
 │   │
 │   ├── pipeline/
+│   │   ├── __init__.py
 │   │   ├── delivery.py
 │   │   ├── errors.py
 │   │   ├── postprocess.py
 │   │   └── types.py
 │   │
 │   ├── utils/
+│   │   ├── __init__.py
 │   │   ├── format.py
 │   │   ├── text.py
 │   │   └── time.py
@@ -110,22 +118,25 @@ ytaudio/
 │   │   ├── download_worker.py
 │   │   └── queue.py
 │   │
+│   ├── __init__.py
 │   └── main.py
 │
 ├── nginx/
 │   └── nginx.conf
 │
 ├── storage/
+│   └── db/
+│       └── bot.sqlite3
 │
-├── cookies.txt
-├── .env
 ├── .dockerignore
+├── .env
 ├── .gitignore
+├── cookies.txt
 ├── docker-compose.yml
 ├── docker-compose.dev.yml
 ├── Dockerfile
-├── README.md
-└── requirements.txt
+├── requirements.txt
+└── README.md
 ```
 
 ---
