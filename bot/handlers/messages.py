@@ -5,6 +5,7 @@ from telegram.ext import ContextTypes # type: ignore
 
 from bot.db.db import register_user, can_user_download, get_user_language, set_user_language
 from bot.i18n.helpers import tr, tr_user
+from bot.i18n.keyboards import user_reply_keyboard
 from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.downloaders.registry import is_supported_url
@@ -61,7 +62,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	# send "queued" message
 	status_msg = await message.reply_text(
-		tr_user(user.id, "queue")
+		tr_user(user.id, "queue"),
+		reply_markup=user_reply_keyboard(user.id)
 	)
 
 	# job contains ONLY DATA, no bot, no application
