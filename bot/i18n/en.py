@@ -5,7 +5,7 @@ TEXTS = {
     "language_set_default": "Language set to English 🇬🇧",
 
     "start_welcome_new": "Welcome, friend! 👋\nPlease choose your language below 👇",
-    "welcome_back": "Welcome back, my friend! 👋",
+    "start_welcome_back": "Welcome back, my friend! 👋",
 
 	"queue": "⏳ Task added to queue. Please wait.",
 	"reading_info": "🔍 Reading video information…",
@@ -39,6 +39,10 @@ TEXTS = {
 		"Used today: <b>{used} / {limit}</b>\n\n"
 		"⏰ Limit resets in <b>{reset_in}</b>"
 	),
+
+    "supporter_info": (
+        "🌟 <b>Supporter!</b>\nThank you for your support! Your contributions help keep the bot running and improve its features.\n\n"
+    ),
 
     "plan_info": (
         "📦 <b>Your plan</b>\n\n"
@@ -82,8 +86,31 @@ TEXTS = {
         "{bot_caption_prefix} <b>{bot_username}</b>"
     ),
 
+    # --- Help text ---
+    "help_text": (
+        "❓ <b>Help & FAQ</b>\n\n"
+        "• To download audio, simply send me a YouTube link.\n"
+        "• You can check your plan and usage with the '💳 Plan' button.\n"
+        "• To change the language, use the '🌐 Language' button.\n\n"
+        "If you have any other questions, feel free to ask!"
+    ),
+
+    # --- Donation ---
+    "donate_prompt": "⭐ Support the bot ⭐\n\nIf you like this bot, you can support its development by donating stars! Your support helps keep the bot running and improves its features.\n\nChoose a donation amount below:",
+    
+    "donate_10_stars": "⭐ Small tip (10 ⭐)",
+    "donate_100_stars": "⭐ Supporter (100 ⭐)",
+    "donate_300_stars": "⭐ Big thanks (300 ⭐)",
+    "donate_500_stars": "⭐ Premium donation (500 ⭐)",
+    
+    "donation_title": "Support the bot ⭐",
+    "donation_description": "If you like this bot, you can support development ❤️",
+    "donation_thanks": "❤️ Thank you for your support!\nYou donated {stars} ⭐",
+
     # --- Keyboards ---
     "menu_hint": "You can use the menu below 👇",
     "btn_language": "🌐 Language",
     "btn_plan": "💳 Plan",
+    "btn_help": "❓ Help",
+    "btn_donate": "⭐ Donate",
 }

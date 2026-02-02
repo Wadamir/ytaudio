@@ -1,7 +1,11 @@
+import logging
+
 from telegram.ext import ContextTypes # type: ignore
 from bot.db.db import get_user_language
 from bot.i18n.service import get_text
 from bot.config.bot import BOT_USERNAME, BOT_TITLE, BOT_CAPTION_PREFIX
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_I18N_CONTEXT = {
 	"bot_username": BOT_USERNAME,

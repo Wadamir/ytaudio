@@ -57,3 +57,11 @@ def time_ago_from_iso(ts: str) -> str:
 
 	days = hours // 24
 	return f"{days} d ago"
+
+
+def parse_iso_datetime(ts: str) -> datetime:
+    dt = datetime.fromisoformat(ts)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+    

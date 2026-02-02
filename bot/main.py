@@ -1,6 +1,6 @@
 import os
 import logging
-from telegram.ext import ApplicationBuilder # type: ignore
+from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore
 
 from bot.db.db import init_db
 from bot.i18n.validate import validate_translations
@@ -24,6 +24,12 @@ logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 async def post_init(app):
 	await start_workers(app.bot)
+	
+
+# Test
+# async def log_all_updates(update: object, context):
+# 	print("RAW UPDATE:", update)
+
 
 
 def main():
@@ -38,6 +44,7 @@ def main():
 	)
 
 	register_handlers(app)
+	# app.add_handler(MessageHandler(filters.ALL, log_all_updates), group=-1)
 
 	logging.info("Bot started")
 	app.run_polling()

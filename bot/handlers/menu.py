@@ -4,7 +4,7 @@ from telegram.ext import ContextTypes # type: ignore
 from bot.config.app import ADMIN_USER_ID
 from bot.i18n.helpers import tr_user
 from bot.i18n.keyboards import language_keyboard
-from bot.handlers.commands import plan_handler
+from bot.handlers.commands import plan_handler, help_handler, donate_handler
 from bot.admin.stats import stats_handler, users_stats_handler, downloads_stats_handler
 from bot.admin.actions import system_handler
 
@@ -47,6 +47,14 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> boo
 
 	if text.startswith("💳"):
 		await plan_handler(update, context)
+		return True
+	
+	if text.startswith("❓"):
+		await help_handler(update, context)
+		return True
+	
+	if text.startswith("⭐"):
+		await donate_handler(update, context)
 		return True
 
 	return False

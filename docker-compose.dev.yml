@@ -6,5 +6,7 @@ services:
       - .env
     volumes:
       - ./bot:/app/bot
+      - ./storage/db:/app/storage/db
     environment:
       - PYTHONPATH=/app
+      - RESET_DB_ON_START=true

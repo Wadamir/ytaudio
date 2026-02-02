@@ -1,10 +1,12 @@
+import os
 import sqlite3
 from pathlib import Path
 from typing import Optional
-from bot.utils.time import utc_now_iso, utc_today_iso
+from datetime import timedelta
+from bot.utils.time import utc_now_iso, utc_today_iso, parse_iso_datetime
 
 
-DB_PATH = Path("/storage/db/bot.sqlite3")
+DB_PATH = Path(os.getenv("DB_PATH", "/storage/db/bot.sqlite3"))
 
 
 # --------------------------------------------------
@@ -25,6 +27,11 @@ def get_conn():
 # Init DB
 # --------------------------------------------------
 def init_db():
+	if os.getenv("RESET_DB_ON_START", "false").lower() == "true":
+		if DB_PATH.exists():
+			DB_PATH.unlink()
+			print("Database reset on start.")
+			
 	with get_conn() as conn:
 		# --- plans ---
 		conn.execute("""
@@ -58,6 +65,9 @@ def init_db():
 
 				plan_id INTEGER NOT NULL DEFAULT 0,
 				plan_expires_at TEXT,
+
+				supporter_level INTEGER DEFAULT 0,
+				supporter_expires_at TEXT,
 
 				downloads_count INTEGER DEFAULT 0,
 				last_video_at TEXT,
@@ -105,6 +115,42 @@ def init_db():
 
 				FOREIGN KEY (user_id) REFERENCES users(user_id)
 			)
+		""")
+
+		# --- donations ---
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS donations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+				user_id INTEGER NOT NULL,
+
+				provider TEXT NOT NULL,
+				-- telegram_stars | ton | stripe | crypto_manual
+
+				amount INTEGER NOT NULL,
+				-- stars OR nanoTON (⚠️ important!)
+
+				currency TEXT NOT NULL,
+				-- XTR | TON | USD | EUR
+
+				amount_display REAL,
+				-- 1.25 TON, 4.99 USD (for UI)
+
+				tx_hash TEXT,
+				-- TON tx hash or external ref
+
+				payload TEXT,
+
+				telegram_charge_id TEXT,
+				provider_charge_id TEXT,
+
+				status TEXT NOT NULL DEFAULT 'success',
+				-- success | pending | failed
+
+				created_at TEXT NOT NULL,
+
+				FOREIGN KEY (user_id) REFERENCES users(user_id)
+			);
 		""")
 
 		# --- subscriptions ---
@@ -208,6 +254,18 @@ def init_db():
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_subscriptions_is_active
 			ON subscriptions (is_active);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_donations_user_id
+			ON donations (user_id);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_donations_created_at
+			ON donations (created_at);
+		""")
+		conn.execute("""
+			CREATE INDEX IF NOT EXISTS idx_donations_provider_created_at
+			ON donations (provider, created_at);
 		""")
 
 		conn.commit()
@@ -781,6 +839,197 @@ def get_failure_rate_today() -> Optional[float]:
 		else:
 			return (failed_count / total_count) * 100.0
 
+
+
+# --------------------------------------------------
+# Donations
+# --------------------------------------------------
+def log_donation(
+	user_id: int,
+	amount: int,
+	currency: str = "XTR",
+	amount_display: Optional[float] = None,
+	tx_hash: Optional[str] = None,
+	provider: str = "telegram_stars",
+	payload: str | None = None,
+	telegram_charge_id: str | None = None,
+	provider_charge_id: str | None = None,
+	status: str = "success",
+) -> None:
+	now = utc_now_iso()
+
+	with get_conn() as conn:
+		# insert donation
+		conn.execute("""
+			INSERT INTO donations (
+				user_id,
+				provider,
+				amount,
+				currency,
+				amount_display,
+				tx_hash,
+				payload,
+				telegram_charge_id,
+				provider_charge_id,
+				status,			   
+				created_at
+			)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		""", (
+			user_id,
+			provider,
+			amount,
+			currency,
+			amount_display,
+			tx_hash,
+			payload,
+			telegram_charge_id,
+			provider_charge_id,
+			status,				
+			now,
+		))
+
+		conn.commit()
+		
+
+def extend_supporter(user_id: int, days: float) -> None:
+	now = utc_now_iso()
+
+	with get_conn() as conn:
+		cur = conn.execute(
+			"SELECT supporter_expires_at FROM users WHERE user_id = ?",
+			(user_id,)
+		)
+		row = cur.fetchone()
+
+		if row and row[0]:
+			current_expires_at = parse_iso_datetime(row[0])
+			if current_expires_at > parse_iso_datetime(now):
+				new_expires_at = current_expires_at + timedelta(days=days)
+			else:
+				new_expires_at = parse_iso_datetime(now) + timedelta(days=days)
+		else:
+			new_expires_at = parse_iso_datetime(now) + timedelta(days=days)
+
+		conn.execute("""
+			UPDATE users
+			SET supporter_expires_at = ?
+			WHERE user_id = ?
+		""", (
+			new_expires_at.isoformat(),
+			user_id,
+		))
+		conn.commit()        
+
+
+def is_supporter(user_id: int) -> bool:
+	now = utc_now_iso()
+
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT 1
+			FROM users
+			WHERE user_id = ?
+				AND supporter_expires_at IS NOT NULL
+				AND supporter_expires_at >= ?
+		""", (user_id, now))
+		return cur.fetchone() is not None
+	
+
+def supporter_expires_at(user_id: int) -> Optional[str]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT supporter_expires_at
+			FROM users
+			WHERE user_id = ?
+		""", (user_id,))
+		row = cur.fetchone()
+		return row[0] if row else None
+	
+
+def get_total_donations() -> int:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT SUM(amount)
+			FROM donations
+			WHERE status = 'success'
+		""")
+		result = cur.fetchone()[0]
+		return result if result is not None else 0    
+	
+
+def get_total_donations_today() -> int:
+	today = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT SUM(amount)
+			FROM donations
+			WHERE status = 'success'
+				AND DATE(created_at) = ?
+		""", (today,))
+		result = cur.fetchone()[0]
+		return result if result is not None else 0
+	
+
+def get_top_donators(limit: int = 10) -> list[dict]:
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				u.user_id,
+				u.username,
+				u.first_name,
+				u.last_name,
+				SUM(d.amount) AS total_donated
+			FROM users u
+			JOIN donations d ON u.user_id = d.user_id
+			WHERE d.status = 'success'
+			GROUP BY u.user_id
+			ORDER BY total_donated DESC
+			LIMIT ?
+		""", (limit,))
+		rows = cur.fetchall()
+		donators = []
+		for row in rows:
+			donators.append({
+				"user_id": row[0],
+				"username": row[1],
+				"first_name": row[2],
+				"last_name": row[3],
+				"total_donated": row[4],
+			})
+		return donators
+	
+
+def get_top_donators_today(limit: int = 10) -> list[dict]:
+	today = utc_today_iso()
+	with get_conn() as conn:
+		cur = conn.execute("""
+			SELECT
+				u.user_id,
+				u.username,
+				u.first_name,
+				u.last_name,
+				SUM(d.amount) AS total_donated
+			FROM users u
+			JOIN donations d ON u.user_id = d.user_id
+			WHERE d.status = 'success'
+				AND DATE(d.created_at) = ?
+			GROUP BY u.user_id
+			ORDER BY total_donated DESC
+			LIMIT ?
+		""", (today, limit))
+		rows = cur.fetchall()
+		donators = []
+		for row in rows:
+			donators.append({
+				"user_id": row[0],
+				"username": row[1],
+				"first_name": row[2],
+				"last_name": row[3],
+				"total_donated": row[4],
+			})
+		return donators
+	
 
 
 # --------------------------------------------------
