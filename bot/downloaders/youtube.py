@@ -107,6 +107,7 @@ class YouTubeDownloader(BaseDownloader):
 			"socket_timeout": 30,
 			"retries": YTDLP_RETRIES,
 			"fragment_retries": 3,
+			"skip_unavailable_fragments": True,
 			"noplaylist": YTDLP_NO_PLAYLIST,
 			"js_runtimes": {
 				"node": {
@@ -118,6 +119,7 @@ class YouTubeDownloader(BaseDownloader):
 			"sleep_interval": 1,
 			"max_sleep_interval": 5,
 			"http_headers": {
+				"Connection": "close",
 				"User-Agent": profile["user_agent"]
 			},		
 			"extractor_args": {
