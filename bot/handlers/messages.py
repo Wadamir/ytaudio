@@ -63,7 +63,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	# send "queued" message
 	status_msg = await message.reply_text(
 		tr_user(user.id, "queue"),
-		reply_markup=user_reply_keyboard(user.id)
+		# reply_markup=user_reply_keyboard(user.id)
 	)
 
 	# job contains ONLY DATA, no bot, no application
