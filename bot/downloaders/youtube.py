@@ -128,13 +128,12 @@ class YouTubeDownloader(BaseDownloader):
                 }
             },
 		}
-		if os.getenv("APP_ENV") == "prod":
-			return
-			if self._should_use_secondary_ip():
-				logger.info("[downloader] Using secondary IP for yt-dlp")
-				opts["proxy"] = YT_PROXY_SECONDARY
-			else:
-				opts["proxy"] = YT_PROXY_PRIMARY
+		# if os.getenv("APP_ENV") == "prod":
+		# 	if self._should_use_secondary_ip():
+		# 		logger.info("[downloader] Using secondary IP for yt-dlp")
+		# 		opts["proxy"] = YT_PROXY_SECONDARY
+		# 	else:
+		# 		opts["proxy"] = YT_PROXY_PRIMARY
 
 		return opts
 
