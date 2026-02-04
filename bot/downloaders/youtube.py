@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Dict, Literal, Optional
 from dataclasses import dataclass
 
-from bot.db.db import count_youtube_errors_last_minutes
-
 from bot.config.downloaders import *
-from bot.config.network import YT_PROXY_PRIMARY, YT_PROXY_SECONDARY, YTDLP_JS_RUNTIME_PATH
+from bot.config.network import YTDLP_JS_RUNTIME_PATH
+
+from bot.transport.strategy import iter_routes
+from bot.transport.state import mark_403, mark_success
 
 from .base import BaseDownloader, DownloadContext
 from .errors import DownloaderError, VideoUnavailable, LiveStreamNotSupported, VideoTooLong, DownloadFailed, FetchInfoFailed
@@ -68,14 +69,27 @@ class YouTubeDownloader(BaseDownloader):
 	def can_handle(self, url: str) -> bool:
 		return "youtube.com" in url or "youtu.be" in url
 	
-	def _should_use_secondary_ip(self) -> bool:
-		return (
-			count_youtube_errors_last_minutes(
-				error_type=yt_errors,
-				minutes=YT_UNAVAILABLE_TIMEFRAME_MINUTES,
-			) >= YT_UNAVAILABLE_MAX_ERRORS
-		)
-	
+	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
+		for route in iter_routes():
+			try:
+				opts = self._base_opts(ctx)
+
+				if route.proxy:
+					opts["proxy"] = route.proxy
+
+				info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+				mark_success(route.key)
+				return info
+
+			except yt_dlp.utils.DownloadError as e:
+				msg = str(e).lower()
+				if any(x in msg for x in ("403", "429", "forbidden", "too many requests")): # youtube_403/429
+					mark_403(route.key)
+					continue
+				raise
+
+		raise FetchInfoFailed("All transport routes failed")
+
 	def _pick_ua_profile(self) -> str:
 		# For future use: pick different UA profiles based on some criteria
 		# 70% desktop
@@ -112,8 +126,8 @@ class YouTubeDownloader(BaseDownloader):
 			"js_runtimes": {
 				"node": {
 					"path": YTDLP_JS_RUNTIME_PATH
-                }
-            },
+				}
+			},
 			# "remote_components": ["ejs:github"],
 			"concurrent_fragment_downloads": 1,
 			"sleep_interval": 1,
@@ -123,17 +137,11 @@ class YouTubeDownloader(BaseDownloader):
 				"User-Agent": profile["user_agent"]
 			},		
 			"extractor_args": {
-                "youtube": {
-                    "player_client": ["web", "android"],
-                }
-            },
-		}
-		# if os.getenv("APP_ENV") == "prod":
-		# 	if self._should_use_secondary_ip():
-		# 		logger.info("[downloader] Using secondary IP for yt-dlp")
-		# 		opts["proxy"] = YT_PROXY_SECONDARY
-		# 	else:
-		# 		opts["proxy"] = YT_PROXY_PRIMARY
+				"youtube": {
+					"player_client": ["web", "android"],
+				}
+			},
+		}		
 
 		return opts
 
@@ -194,12 +202,12 @@ class YouTubeDownloader(BaseDownloader):
 
 		raise last_exc
 	
-	async def _fetch_info(self, url: str, ctx: DownloadContext) -> Dict:
-		opts = self._base_opts(ctx)
-		opts["skip_download"] = True
-		return await asyncio.to_thread(
-			lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
-		)
+	# async def _fetch_info(self, url: str, ctx: DownloadContext) -> Dict:
+	# 	opts = self._base_opts(ctx)
+	# 	opts["skip_download"] = True
+	# 	return await asyncio.to_thread(
+	# 		lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+	# 	)
 
 		
 	async def download(self, url: str, ctx:DownloadContext):
@@ -208,7 +216,15 @@ class YouTubeDownloader(BaseDownloader):
 
 		# 1. Get info
 		try:
-			info = await self._fetch_info(url, ctx)		
+			# info = await self._fetch_info(url, ctx)		
+			# new with strategy
+			info = await asyncio.to_thread(
+				lambda: self._extract_info_with_strategy(url, ctx)
+			)
+
+		except FetchInfoFailed:
+			raise
+
 		except Exception as e:
 			if "unavailable" in str(e).lower() or "not available" in str(e).lower():
 				raise VideoUnavailable(f"Video is unavailable: {e}") from e
@@ -228,12 +244,12 @@ class YouTubeDownloader(BaseDownloader):
 		ctx.video_artist = info.get("uploader") or info.get("artist") or info.get("channel") or "YouTube"
 		ctx.duration_seconds = duration
 
-		notify(ctx, DownloadStage.INFO_READY,
-			{"duration_seconds": duration}
-		)
-
 		if duration and duration > MAX_DURATION_SECONDS:
 			raise VideoTooLong("Video duration exceeds allowed limit")
+		
+		notify(ctx, DownloadStage.INFO_READY,
+			{"duration_seconds": duration}
+		)		
 		
 		# 3. Fast/Slow
 		use_fast_mode = self._can_use_fast_mode(info)
@@ -271,13 +287,13 @@ class YouTubeDownloader(BaseDownloader):
 		
 		try:
 			notify(ctx, DownloadStage.DOWNLOADING,
-                {
+				{
 					"duration_seconds": duration,
-                    "processing_mode": ctx.processing_mode,
-                    "chosen_bitrate": ctx.chosen_bitrate,
-                    "estimated_size_mb": ctx.estimated_size_mb,
-                }   
-            )
+					"processing_mode": ctx.processing_mode,
+					"chosen_bitrate": ctx.chosen_bitrate,
+					"estimated_size_mb": ctx.estimated_size_mb,
+				}   
+			)
 
 			await self._download_with_retry(url, opts)
 
