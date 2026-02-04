@@ -71,6 +71,11 @@ class YouTubeDownloader(BaseDownloader):
 	
 	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
 		for route in iter_routes():
+			logger.info(
+				"[downloader] Trying to fetch info via route: %s (proxy=%s)",
+				route.key,
+				"yes" if route.proxy else "no",
+			)
 			try:
 				opts = self._base_opts(ctx)
 

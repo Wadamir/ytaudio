@@ -21,8 +21,8 @@ TEXTS = {
     "unsupported_platform": "❌ Please send a valid link.",
     "video_unavailable": "❌ Video is unavailable.",
     "live_not_supported": "❌ Live streams are not supported.",
-    "video_too_long": "❌ The video duration exceeds the maximum allowed length of {max_duration}.",
-    "failed_reading_info": "❌ Failed to read video information.",    
+    "video_too_long": "❌ Sorry, the video duration exceeds the maximum allowed length of {max_duration}. Please try a shorter video.",
+    "failed_reading_info": "❌ Sorry, failed to read video information.",    
 	"failed_download": "❌ Failed to download audio. Please try again later....",
 
     "failed_processing": "❌ Failed to process audio. Please try again later.",
