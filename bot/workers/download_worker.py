@@ -36,6 +36,8 @@ from bot.pipeline.errors import (
 	DeliveryFailed,
 )
 
+from bot.config.downloaders import MAX_DURATION_SECONDS
+
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +209,7 @@ async def process_job(job: Dict, bot: Bot):
 			await bot.edit_message_text(
 				chat_id=chat_id,
 				message_id=message_id,
-				text=tr_user(user_id, "video_too_long"),
+				text=tr_user(user_id, "video_too_long", max_duration=format_duration(MAX_DURATION_SECONDS)),
 			)
 
 		except FetchInfoFailed as e:
