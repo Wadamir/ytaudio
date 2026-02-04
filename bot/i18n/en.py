@@ -19,6 +19,8 @@ TEXTS = {
 
 
     "unsupported_platform": "❌ Please send a valid link.",
+    "already_inflight": "⏳ This video is already being processed. Please wait for the current task to complete.",
+    
     "video_unavailable": "❌ Video is unavailable.",
     "live_not_supported": "❌ Live streams are not supported.",
     "video_too_long": "❌ Sorry, the video duration exceeds the maximum allowed length of {max_duration}. Please try a shorter video.",

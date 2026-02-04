@@ -10,6 +10,7 @@ from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.downloaders.registry import is_supported_url
 from bot.handlers.menu import handle_menu
+from bot.utils.inflight import is_inflight, mark_inflight, clear_inflight
 
 logger = logging.getLogger(__name__)
 
@@ -59,19 +60,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			tr_user(user.id, "unsupported_platform")
 		)
 		return
+		
+	if is_inflight(user.id, url):
+		await update.message.reply_text(
+			tr_user(user.id, "already_inflight")
+		)
+		return
 
-	# send "queued" message
-	status_msg = await message.reply_text(
-		tr_user(user.id, "queue"),
-		# reply_markup=user_reply_keyboard(user.id)
-	)
+	mark_inflight(user.id, url)
 
-	# job contains ONLY DATA, no bot, no application
-	job = {
-		"user_id": user.id,
-		"chat_id": message.chat_id,
-		"message_id": status_msg.message_id,
-		"url": url,
-	}
+	try:
+		# send "queued" message
+		status_msg = await message.reply_text(
+			tr_user(user.id, "queue"),
+			# reply_markup=user_reply_keyboard(user.id)
+		)
 
-	await download_queue.put(job)
+		# job contains ONLY DATA, no bot, no application
+		job = {
+			"user_id": user.id,
+			"chat_id": message.chat_id,
+			"message_id": status_msg.message_id,
+			"url": url,
+		}
+
+		await download_queue.put(job)
+	except Exception as e:
+		logger.error("Failed to enqueue download job: %s", e)
+		await message.reply_text(
+			tr_user(user.id, "failed_worker")
+		)
+		clear_inflight(user.id, url)
+		raise e

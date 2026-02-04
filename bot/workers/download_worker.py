@@ -36,6 +36,8 @@ from bot.pipeline.errors import (
 	DeliveryFailed,
 )
 
+from bot.utils.inflight import clear_inflight
+
 from bot.config.downloaders import MAX_DURATION_SECONDS
 
 
@@ -347,6 +349,9 @@ async def process_job(job: Dict, bot: Bot):
 					ctx.error_message,
 				)
 
+            #try clean inflight
+			clear_inflight(ctx.user_id, ctx.video_url)
+			
 			# cleanup files
 			cleanup_files(ctx.downloaded_files)
 			cleanup_files(ctx.output_files)	
