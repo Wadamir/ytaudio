@@ -404,7 +404,7 @@ async def process_job(job: Dict, bot: Bot):
 			pass
 
 		#try clean inflight
-		await clear_inflight(ctx.user_id, ctx.video_url)
+		# await clear_inflight(ctx.user_id, ctx.video_url)
 		
 		# cleanup files
 		cleanup_files(ctx.downloaded_files)
