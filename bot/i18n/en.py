@@ -23,7 +23,7 @@ TEXTS = {
 
     "video_unavailable": "❌ Video is unavailable.",
     "live_stream": "❌ Live streams are not supported.",
-    "long_video": "❌ Sorry, the video duration exceeds the maximum allowed length of {max_duration}. Please try a shorter video.",
+    "long_video": "❌ Sorry, the video duration exceeds the allowed maximum length. Please try a shorter video.",
     "info_unavailable": "❌ Sorry, failed to read video information.",    
 	"failed_download": "❌ Failed to download audio. Please try again later....",
 
