@@ -20,19 +20,20 @@ TEXTS = {
 
     "unsupported_platform": "❌ Please send a valid link.",
     "already_inflight": "⏳ This video is already being processed. Please wait for the current task to complete.",
-    
+
     "video_unavailable": "❌ Video is unavailable.",
-    "live_not_supported": "❌ Live streams are not supported.",
-    "video_too_long": "❌ Sorry, the video duration exceeds the maximum allowed length of {max_duration}. Please try a shorter video.",
-    "failed_reading_info": "❌ Sorry, failed to read video information.",    
+    "live_stream": "❌ Live streams are not supported.",
+    "long_video": "❌ Sorry, the video duration exceeds the maximum allowed length of {max_duration}. Please try a shorter video.",
+    "info_unavailable": "❌ Sorry, failed to read video information.",    
 	"failed_download": "❌ Failed to download audio. Please try again later....",
 
     "failed_processing": "❌ Failed to process audio. Please try again later.",
-    "file_too_large": "❌ The resulting file is too large for Telegram upload.",
-	"failed_sending_audio": "❌ Failed to send audio. Please try again later.",
+    "no_duration": "❌ Unable to determine video duration. Please try again later.",
+    "large_file": "❌ The resulting file is too large for Telegram upload.",
+	"failed_delivery": "❌ Failed to send audio. Please try again later.",
     "failed_create_link": "❌ Failed to create download link.",
 
-
+    "internal_error": "❌ An internal error occurred. Please try again later.",
     "failed_worker": "❌ An error occurred during processing. Please try again later.",
 
 	"daily_limit_reached": (

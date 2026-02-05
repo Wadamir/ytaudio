@@ -36,12 +36,22 @@ from bot.pipeline.errors import (
 	DeliveryFailed,
 )
 
-from bot.utils.inflight import clear_inflight
+from bot.utils.inflight import get_inflight_messages, pop_inflight_messages, clear_inflight
 
 from bot.config.downloaders import MAX_DURATION_SECONDS
 
 
 logger = logging.getLogger(__name__)
+
+
+
+YOUTUBE_ERRORS = {
+	"video_unavailable", 
+	"live_stream", 
+	"long_video",
+	"info_unavailable", 
+	"failed_download"
+}
 
 
 
@@ -145,12 +155,13 @@ async def process_job(job: Dict, bot: Bot):
 		downloader = get_downloader(url)
 		if not downloader:
 			ctx.status = "failed"
+			ctx.fallback_reason = "unsupported_platform"
 			ctx.error_message = "Unsupported platform"
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "unsupported_platform"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "unsupported_platform"),
+			# )
 			return
 
 		try:
@@ -162,148 +173,151 @@ async def process_job(job: Dict, bot: Bot):
 
 		except VideoUnavailable:
 			ctx.status = "failed"
-			ctx.fallback_reason = "unavailable"
+			ctx.fallback_reason = "video_unavailable"
+			ctx.error_message = "Video is unavailable"
 
-			log_youtube_error(
-				error_type="unavailable",
-				video_id=ctx.video_id,
-				video_url=ctx.video_url,
-				ua_profile=ctx.ua_profile,
-                error_message=ctx.error_message,
-			)
+			# log_youtube_error(
+			# 	error_type="unavailable",
+			# 	video_id=ctx.video_id,
+			# 	video_url=ctx.video_url,
+			# 	ua_profile=ctx.ua_profile,
+			# 	error_message=ctx.error_message,
+			# )
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "video_unavailable"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "video_unavailable"),
+			# )
 
 		except LiveStreamNotSupported:
 			ctx.status = "failed"
 			ctx.fallback_reason = "live_stream"
+			ctx.error_message = "Live streams are not supported"
 
-			log_youtube_error(
-				error_type="live",
-				video_id=ctx.video_id,
-				video_url=ctx.video_url,
-				ua_profile=ctx.ua_profile,
-				error_message=ctx.error_message,
-			)
+			# log_youtube_error(
+			# 	error_type="live",
+			# 	video_id=ctx.video_id,
+			# 	video_url=ctx.video_url,
+			# 	ua_profile=ctx.ua_profile,
+			# 	error_message=ctx.error_message,
+			# )
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "live_not_supported"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "live_not_supported"),
+			# )
 
 		except VideoTooLong:
 			ctx.status = "failed"
 			ctx.fallback_reason = "long_video"
+			ctx.error_message = "Video duration exceeds allowed limit"
 
-			log_youtube_error(
-				error_type="too_long",
-				video_id=ctx.video_id,
-				video_url=ctx.video_url,
-				ua_profile=ctx.ua_profile,
-				error_message=ctx.error_message,
-			)
+			# log_youtube_error(
+			# 	error_type="too_long",
+			# 	video_id=ctx.video_id,
+			# 	video_url=ctx.video_url,
+			# 	ua_profile=ctx.ua_profile,
+			# 	error_message=ctx.error_message,
+			# )
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "video_too_long", max_duration=format_duration(MAX_DURATION_SECONDS)),
-			)
-
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "video_too_long", max_duration=format_duration(MAX_DURATION_SECONDS)),
+			# )
 		except FetchInfoFailed as e:
 			ctx.status = "failed"
 			ctx.fallback_reason = "info_unavailable"
 			ctx.error_message = str(e)
-			log_youtube_error(
-				error_type="fetch_info",
-				video_id=ctx.video_id,
-				video_url=ctx.video_url,
-				ua_profile=ctx.ua_profile,
-				error_message=ctx.error_message,
-			)
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "failed_reading_info"),
-			)
+			# log_youtube_error(
+			# 	error_type="fetch_info",
+			# 	video_id=ctx.video_id,
+			# 	video_url=ctx.video_url,
+			# 	ua_profile=ctx.ua_profile,
+			# 	error_message=ctx.error_message,
+			# )
+
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "failed_reading_info"),
+			# )
 
 		except DownloadFailed as e:
 			ctx.status = "failed"
+			ctx.fallback_reason = "failed_download"			
 			ctx.error_message = str(e)
-			ctx.fallback_reason = "download"
-			log_youtube_error(
-				error_type="unknown",
-				video_id=ctx.video_id,
-				video_url=ctx.video_url,
-				ua_profile=ctx.ua_profile,
-				error_message=ctx.error_message,
-			)
+			# log_youtube_error(
+			# 	error_type="unknown",
+			# 	video_id=ctx.video_id,
+			# 	video_url=ctx.video_url,
+			# 	ua_profile=ctx.ua_profile,
+			# 	error_message=ctx.error_message,
+			# )
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "failed_download"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "failed_download"),
+			# )
 
 		except PipelineError as e:
 			ctx.status = "failed"
+			ctx.fallback_reason = "failed_processing"			
 			ctx.error_message = str(e)
-			ctx.fallback_reason = "processing"
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "failed_processing"),
-			)	
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "failed_processing"),
+			# )	
 
 		except PostProcessingFailed as e:
 			ctx.status = "failed"
-			ctx.error_message = str(e)
-			ctx.fallback_reason = "postprocessing"
+			ctx.fallback_reason = "failed_processing"
+			ctx.error_message = str(e)			
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "failed_processing"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "failed_processing"),
+			# )
 
 		except PostProcessingNoDuration as e:
 			ctx.status = "failed"
-			ctx.error_message = str(e)
 			ctx.fallback_reason = "no_duration"
+			ctx.error_message = str(e)			
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "failed_processing"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "failed_processing"),
+			# )
 
 		except FileTooLarge as e:
 			ctx.status = "failed"
-			ctx.error_message = str(e)
-			ctx.fallback_reason = "too_large"
+			ctx.fallback_reason = "large_file"
+			ctx.error_message = str(e)			
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "file_too_large"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "large_file"),
+			# )
 
 		except DeliveryFailed as e:
 			ctx.status = "failed"
+			ctx.fallback_reason = "failed_delivery"			
 			ctx.error_message = str(e)
-			ctx.fallback_reason = "delivery"
 
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "failed_sending_audio"),
-			)
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "failed_sending_audio"),
+			# )
 
 	except Exception as e:
 		logger.exception("[worker] unexpected fatal error")
@@ -313,45 +327,88 @@ async def process_job(job: Dict, bot: Bot):
 			ctx.fallback_reason = "internal_error"
 			ctx.error_message = str(e)[:500]
 
-			try:
-				await bot.edit_message_text(
-					chat_id=chat_id,
-					message_id=message_id,
-					text=tr_user(user_id, "failed_worker"),
-				)
-			except TelegramError:
-				pass
+			# try:
+			# 	await bot.edit_message_text(
+			# 		chat_id=chat_id,
+			# 		message_id=message_id,
+			# 		text=tr_user(user_id, "failed_worker"),
+			# 	)
+			# except TelegramError:
+			# 	pass
 
 	finally:
-		if ctx:
-			ctx.processing_time_ms = int(
-				(asyncio.get_event_loop().time() - start_ts) * 1000
+		if not ctx:
+			return
+		
+		ctx.processing_time_ms = int(
+			(asyncio.get_event_loop().time() - start_ts) * 1000
+		)
+		log_download(**build_log_payload(ctx))
+
+		text_key = ctx.fallback_reason or "failed_worker"
+
+		if ctx.status == "success":
+			increment_downloads(ctx.user_id)
+			logger.info(
+				"[worker] job success for %s in %d ms",
+				ctx.user_id,
+				ctx.processing_time_ms,
 			)
-			log_download(**build_log_payload(ctx))
+			text_key = "job_completed"
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, "job_completed"),
+			# )
+			# for msg_id in pop_inflight_messages(ctx.user_id, ctx.video_url):
+			# 	try:
+			# 		await bot.edit_message_text(
+			# 			chat_id=chat_id,
+			# 			message_id=msg_id,
+			# 			text=tr_user(user_id, "job_completed"),
+			# 		)
+			# 	except TelegramError:
+			# 		pass
+		else:
+			logger.info(
+				"[worker] job failed for %s in %d ms: %s",
+				ctx.user_id,
+				ctx.processing_time_ms,
+				ctx.fallback_reason or ctx.error_message,
+			)
+			if ctx.fallback_reason in YOUTUBE_ERRORS:
+				try:
+					log_youtube_error(
+						error_type=ctx.fallback_reason,
+						video_id=ctx.video_id,
+						video_url=ctx.video_url,
+						ua_profile=ctx.ua_profile,
+						error_message=ctx.error_message
+					)
+				except Exception as e:
+					logger.warning(f"[worker] failed to log youtube error: {e}")
 
-			if ctx.status == "success":
-				increment_downloads(ctx.user_id)
-				logger.info(
-					"[worker] job success for %s in %d ms",
-					ctx.user_id,
-					ctx.processing_time_ms,
-				)
-				await bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=message_id,
-                    text=tr_user(user_id, "job_completed"),
-                )
-			else:
-				logger.info(
-					"[worker] job failed for %s in %d ms: %s",
-					ctx.user_id,
-					ctx.processing_time_ms,
-					ctx.error_message,
-				)
+		try:
+			# await bot.edit_message_text(
+			# 	chat_id=chat_id,
+			# 	message_id=message_id,
+			# 	text=tr_user(user_id, text_key),
+			# )
+			for msg_id in pop_inflight_messages(ctx.user_id, ctx.video_url):
+				try:
+					await bot.edit_message_text(
+						chat_id=chat_id,
+						message_id=msg_id,
+						text=tr_user(user_id, text_key),
+					)
+				except TelegramError:
+					pass
+		except TelegramError:
+			pass
 
-            #try clean inflight
-			clear_inflight(ctx.user_id, ctx.video_url)
-			
-			# cleanup files
-			cleanup_files(ctx.downloaded_files)
-			cleanup_files(ctx.output_files)	
+		#try clean inflight
+		clear_inflight(ctx.user_id, ctx.video_url)
+		
+		# cleanup files
+		cleanup_files(ctx.downloaded_files)
+		cleanup_files(ctx.output_files)	
