@@ -389,12 +389,8 @@ async def process_job(job: Dict, bot: Bot):
 					logger.warning(f"[worker] failed to log youtube error: {e}")
 
 		try:
-			# await bot.edit_message_text(
-			# 	chat_id=chat_id,
-			# 	message_id=message_id,
-			# 	text=tr_user(user_id, text_key),
-			# )
-			for msg_id in pop_inflight_messages(ctx.user_id, ctx.video_url):
+			msg_ids = await get_inflight_messages(ctx.user_id, ctx.video_url)
+			for msg_id in msg_ids:
 				logger.debug(f"[worker] updating inflight message {msg_id} for user {ctx.user_id}")
 				try:
 					await bot.edit_message_text(
@@ -408,7 +404,7 @@ async def process_job(job: Dict, bot: Bot):
 			pass
 
 		#try clean inflight
-		clear_inflight(ctx.user_id, ctx.video_url)
+		await clear_inflight(ctx.user_id, ctx.video_url)
 		
 		# cleanup files
 		cleanup_files(ctx.downloaded_files)

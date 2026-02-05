@@ -10,7 +10,7 @@ from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.downloaders.registry import is_supported_url
 from bot.handlers.menu import handle_menu
-from bot.utils.inflight import is_inflight, mark_inflight, add_inflight_message, clear_inflight
+from bot.utils.inflight import is_inflight, mark_inflight, clear_inflight
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +61,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 		return
 		
-	if is_inflight(user.id, url):
-		await update.message.reply_text(
+	if await is_inflight(user.id, url):
+		status = await update.message.reply_text(
 			tr_user(user.id, "already_inflight")
 		)
-		add_inflight_message(user.id, url, message.message_id)
+		await mark_inflight(user.id, url, status.message_id)
 		return
 
-	mark_inflight(user.id, url, message.message_id)
+	await mark_inflight(user.id, url, message.message_id)
 
 	try:
 		# send "queued" message
@@ -91,5 +91,5 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		await message.reply_text(
 			tr_user(user.id, "failed_worker")
 		)
-		clear_inflight(user.id, url)
+		await clear_inflight(user.id, url)
 		raise e

@@ -1,37 +1,46 @@
 import time
-from typing import Dict, Tuple
+from asyncio import Lock
+from typing import TypedDict, Tuple, List, Dict
 
-# key = (user_id, url)
-_inflight: Dict[Tuple[int, str], dict] = {}
+_lock = Lock()
 
-def is_inflight(user_id: int, url: str) -> bool:
-	return (user_id, url) in _inflight
+class InflightEntry(TypedDict):
+	started_at: float
+	messages: List[int]
 
-def mark_inflight(user_id: int, url: str, message_id: int):
-	if is_inflight(user_id, url):
-		add_inflight_message(user_id, url, message_id)
-	else:
-		_inflight[(user_id, url)] = {
-			"started_at": time.time(),
-			"messages": [message_id],  # store message ids to later edit them if needed
-		}
+_inflight: Dict[Tuple[int, str], InflightEntry] = {}
 
-def add_inflight_message(user_id: int, url: str, message_id: int):
-	entry = _inflight.get((user_id, url))
-	if entry:
-		entry["messages"].append(message_id)
+async def is_inflight(user_id: int, url: str) -> bool:
+	async with _lock:
+		return (user_id, url) in _inflight
 
-def get_inflight_messages(user_id: int, url: str) -> list:
-	entry = _inflight.get((user_id, url))
-	if entry:
-		return entry["messages"]
-	return []
+async def mark_inflight(user_id: int, url: str, message_id: int):
+	async with _lock:
+		key = (user_id, url)
+		entry = _inflight.get(key)
 
-def pop_inflight_messages(user_id: int, url: str) -> list:
-	entry = _inflight.pop((user_id, url), None)
-	if entry:
-		return entry["messages"]
-	return []
+		if entry:
+			entry["messages"].append(message_id)
+		else:
+			_inflight[key] = {
+				"started_at": time.time(),
+				"messages": [message_id],
+			}
+
+async def get_inflight_messages(user_id: int, url: str) -> List[int]:
+	async with _lock:
+		return list(_inflight.get((user_id, url), {}).get("messages", []))
 	
-def clear_inflight(user_id: int, url: str):
-	_inflight.pop((user_id, url), None)
+# async def add_inflight_message(user_id: int, url: str, message_id: int):
+# 	async with _lock:
+# 		entry = _inflight.get((user_id, url))
+# 		if entry:
+# 			entry["messages"].append(message_id)
+
+async def pop_inflight_messages(user_id: int, url: str) -> List[int]:
+	async with _lock:
+		return list(_inflight.pop((user_id, url), {}).get("messages", []))
+
+async def clear_inflight(user_id: int, url: str):
+	async with _lock:
+		_inflight.pop((user_id, url), None)
