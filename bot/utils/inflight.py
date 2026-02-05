@@ -14,18 +14,41 @@ async def is_inflight(user_id: int, url: str) -> bool:
 	async with _lock:
 		return (user_id, url) in _inflight
 
-async def mark_inflight(user_id: int, url: str, message_id: int):
+# async def mark_inflight(user_id: int, url: str, message_id: int):
+# 	async with _lock:
+# 		key = (user_id, url)
+# 		entry = _inflight.get(key)
+
+# 		if entry:
+# 			entry["messages"].append(message_id)
+# 		else:
+# 			_inflight[key] = {
+# 				"started_at": time.time(),
+# 				"messages": [message_id],
+# 			}
+
+async def mark_inflight(
+	user_id: int,
+	url: str,
+	message_id: int,
+) -> bool:
+	"""
+	Returns True if this is a new inflight entry,
+	False if already existed.
+	"""
 	async with _lock:
 		key = (user_id, url)
 		entry = _inflight.get(key)
 
 		if entry:
 			entry["messages"].append(message_id)
-		else:
-			_inflight[key] = {
-				"started_at": time.time(),
-				"messages": [message_id],
-			}
+			return False
+
+		_inflight[key] = {
+			"started_at": time.time(),
+			"messages": [message_id],
+		}
+		return True
 
 async def get_inflight_messages(user_id: int, url: str) -> List[int]:
 	async with _lock:
