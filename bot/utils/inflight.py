@@ -2,7 +2,7 @@ import time
 from typing import Dict, Tuple
 
 # key = (user_id, url)
-_inflight: Dict[Tuple[int, str], float] = {}
+_inflight: Dict[Tuple[int, str], dict] = {}
 
 def is_inflight(user_id: int, url: str) -> bool:
 	return (user_id, url) in _inflight
