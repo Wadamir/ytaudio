@@ -62,13 +62,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		return
 		
 	if await is_inflight(user.id, url):
-		status = await update.message.reply_text(
+		inflight_status = await update.message.reply_text(
 			tr_user(user.id, "already_inflight")
 		)
-		await mark_inflight(user.id, url, status.message_id)
+		await mark_inflight(user.id, url, inflight_status.message_id)
 		return
-
-	await mark_inflight(user.id, url, message.message_id)
 
 	try:
 		# send "queued" message
@@ -76,7 +74,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			tr_user(user.id, "queue"),
 			# reply_markup=user_reply_keyboard(user.id)
 		)
-
+		await mark_inflight(user.id, url, status_msg.message_id)
 		# job contains ONLY DATA, no bot, no application
 		job = {
 			"user_id": user.id,
