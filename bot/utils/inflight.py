@@ -8,10 +8,13 @@ def is_inflight(user_id: int, url: str) -> bool:
 	return (user_id, url) in _inflight
 
 def mark_inflight(user_id: int, url: str, message_id: int):
-	_inflight[(user_id, url)] = {
-		"started_at": time.time(),
-		"messages": [message_id],  # store message ids to later edit them if needed
-	}
+	if is_inflight(user_id, url):
+		add_inflight_message(user_id, url, message_id)
+	else:
+		_inflight[(user_id, url)] = {
+			"started_at": time.time(),
+			"messages": [message_id],  # store message ids to later edit them if needed
+		}
 
 def add_inflight_message(user_id: int, url: str, message_id: int):
 	entry = _inflight.get((user_id, url))
