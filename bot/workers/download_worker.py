@@ -395,6 +395,7 @@ async def process_job(job: Dict, bot: Bot):
 			# 	text=tr_user(user_id, text_key),
 			# )
 			for msg_id in pop_inflight_messages(ctx.user_id, ctx.video_url):
+				logger.debug(f"[worker] updating inflight message {msg_id} for user {ctx.user_id}")
 				try:
 					await bot.edit_message_text(
 						chat_id=chat_id,
