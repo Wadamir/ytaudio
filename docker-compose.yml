@@ -20,9 +20,9 @@ services:
       # Proxy settings for internal yt-dlp downloader core
       - YT_PROXY_PRIMARY=socks5h://proxy-primary:1080
       - YT_PROXY_SECONDARY=socks5h://proxy-secondary:1080
-      # System-wide network routing for python-telegram-bot connection engine
-      - HTTP_PROXY=socks5://proxy-primary:1080
-      - HTTPS_PROXY=socks5://proxy-primary:1080
+      # Force httpx to delegate DNS resolution to the proxy container using socks5h://
+      - HTTP_PROXY=socks5h://proxy-primary:1080
+      - HTTPS_PROXY=socks5h://proxy-primary:1080
 
   # Primary proxy infrastructure container
   proxy-primary:
@@ -39,6 +39,7 @@ services:
     restart: unless-stopped
     networks:
       - ytaudio_net
+
 
   # nginx:
   #   image: nginx:alpine
