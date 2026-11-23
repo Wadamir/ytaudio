@@ -11,18 +11,20 @@ services:
     networks:
       - ytaudio_net
     depends_on:
-      - proxy-primary
-      - proxy-secondary
+      proxy-primary:
+        condition: service_started
+      proxy-secondary:
+        condition: service_started
     environment:
       - PYTHONPATH=/app
-      # Proxy for yt-dlp internal downloader logic
+      # Proxy settings for internal yt-dlp downloader core
       - YT_PROXY_PRIMARY=socks5h://proxy-primary:1080
       - YT_PROXY_SECONDARY=socks5h://proxy-secondary:1080
-      # System-wide proxy variables forcing python-telegram-bot (httpx) to route through our proxy container
-      - HTTP_PROXY=socks5h://proxy-primary:1080
-      - HTTPS_PROXY=socks5h://proxy-primary:1080
+      # System-wide network routing for python-telegram-bot connection engine
+      - HTTP_PROXY=socks5://proxy-primary:1080
+      - HTTPS_PROXY=socks5://proxy-primary:1080
 
-  # Primary proxy server
+  # Primary proxy infrastructure container
   proxy-primary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-primary
@@ -30,14 +32,13 @@ services:
     networks:
       - ytaudio_net
 
-  # Secondary backup proxy server
+  # Secondary backup proxy infrastructure container
   proxy-secondary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-secondary
     restart: unless-stopped
     networks:
       - ytaudio_net
-
 
   # nginx:
   #   image: nginx:alpine
