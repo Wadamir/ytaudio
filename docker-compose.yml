@@ -32,9 +32,9 @@ services:
     networks:
       ytaudio_net:
         ipv4_address: 172.25.0.5
-    # Native bash healthcheck to test port availability without netcat tool dependencies
+    # Standard POSIX sh healthcheck to test port availability without bash or netcat
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/1080' || exit 1"]
+      test: ["CMD-SHELL", "sh -c ': </dev/tcp/127.0.0.1/1080' || exit 1"]
       interval: 3s
       timeout: 2s
       retries: 3
@@ -47,9 +47,9 @@ services:
     networks:
       ytaudio_net:
         ipv4_address: 172.25.0.6
-    # Native bash healthcheck to test port availability without netcat tool dependencies
+    # Standard POSIX sh healthcheck to test port availability without bash or netcat
     healthcheck:
-      test: ["CMD-SHELL", "bash -c '</dev/tcp/127.0.0.1/1080' || exit 1"]
+      test: ["CMD-SHELL", "sh -c ': </dev/tcp/127.0.0.1/1080' || exit 1"]
       interval: 3s
       timeout: 2s
       retries: 3
@@ -60,6 +60,7 @@ networks:
     ipam:
       config:
         - subnet: 172.25.0.0/16
+
 
 
 
