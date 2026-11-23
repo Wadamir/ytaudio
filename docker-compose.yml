@@ -12,10 +12,8 @@ services:
       ytaudio_net:
         ipv4_address: 172.25.0.3
     depends_on:
-      proxy-primary:
-        condition: service_healthy
-      proxy-secondary:
-        condition: service_healthy
+      - proxy-primary
+      - proxy-secondary
     environment:
       - PYTHONPATH=/app
       # Static internal IPs to bypass internal Docker DNS lookups entirely
@@ -32,12 +30,6 @@ services:
     networks:
       ytaudio_net:
         ipv4_address: 172.25.0.5
-    # Standard POSIX sh healthcheck to test port availability without bash or netcat
-    healthcheck:
-      test: ["CMD-SHELL", "sh -c ': </dev/tcp/127.0.0.1/1080' || exit 1"]
-      interval: 3s
-      timeout: 2s
-      retries: 3
 
   # Secondary backup proxy infrastructure container
   proxy-secondary:
@@ -47,12 +39,6 @@ services:
     networks:
       ytaudio_net:
         ipv4_address: 172.25.0.6
-    # Standard POSIX sh healthcheck to test port availability without bash or netcat
-    healthcheck:
-      test: ["CMD-SHELL", "sh -c ': </dev/tcp/127.0.0.1/1080' || exit 1"]
-      interval: 3s
-      timeout: 2s
-      retries: 3
 
 networks:
   ytaudio_net:
@@ -60,9 +46,6 @@ networks:
     ipam:
       config:
         - subnet: 172.25.0.0/16
-
-
-
 
 
 
