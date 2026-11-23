@@ -70,18 +70,44 @@ class YouTubeDownloader(BaseDownloader):
 		return "youtube.com" in url or "youtu.be" in url
 	
 	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
-		# Pre-flight proxy check block to print the actual external IP to container logs
+		# Pre-flight diagnostic block: test host IP, proxy routing, and YouTube connection
 		try:
 			import httpx
 			proxy_url = os.getenv("EXTERNAL_PROXY_URL")
-			logger.info("[proxy-check] Testing routing endpoint using proxy configuration...")
+			logger.info("=== PRE-FLIGHT NETWORK DIAGNOSTICS ===")
 			
-			# Fixed argument from 'proxies' to 'proxy' for httpx compatibility
-			with httpx.Client(proxy=proxy_url, timeout=5.0) as client:
-				current_ip = client.get("https://icanhazip.com").text.strip()
-				logger.info("[proxy-check] Verified external exit node IP address: %s", current_ip)
-		except Exception as proxy_err:
-			logger.error("[proxy-check] Failed to resolve exit node IP address via proxy: %s", proxy_err)
+			# 1. Check local VPS host external IP (without proxy)
+			try:
+				with httpx.Client(timeout=3.0) as client:
+					vps_ip = client.get("https://icanhazip.com").text.strip()
+					logger.info("[diag-1/3] Local VPS Host External IP: %s", vps_ip)
+			except Exception as e:
+				logger.warning("[diag-1/3] Could not resolve local VPS Host IP: %s", e)
+			
+			# 2. Check external proxy exit node IP
+			try:
+				with httpx.Client(proxy=proxy_url, timeout=4.0) as client:
+					proxy_ip = client.get("https://icanhazip.com").text.strip()
+					logger.info("[diag-2/3] Verified External Proxy Exit IP: %s", proxy_ip)
+			except Exception as e:
+				logger.error("[diag-2/3] Proxy routing failed (check credentials/status): %s", e)
+
+			# 3. Test authenticated YouTube connection attempt via proxy
+			try:
+				# Use base options to pass your active netscape cookies block along with the request
+				opts = self._base_opts(ctx)
+				opts["proxy"] = proxy_url
+				logger.info("[diag-3/3] Attempting verified YouTube connection handshake...")
+				
+				# Perform a minimal metadata extraction test to verify if cookies/IP combo is unblocked
+				test_info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+				logger.info("[diag-3/3] YouTube connection handshake SUCCESSFUL (Title: %s)", test_info.get("title"))
+			except Exception as e:
+				logger.error("[diag-3/3] YouTube connection attempt REJECTED (Cookies expired or IP blocked): %s", e)
+				
+			logger.info("======================================")
+		except Exception as diag_global_err:
+			logger.error("[diag-global] Diagnostic sequence interrupted: %s", diag_global_err)
 
 		for route in iter_routes():
 			logger.info(
