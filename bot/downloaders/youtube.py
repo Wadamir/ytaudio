@@ -79,8 +79,11 @@ class YouTubeDownloader(BaseDownloader):
 			try:
 				opts = self._base_opts(ctx)
 
+				# Force external Lithuania proxy even for direct routing attempts to pass host restrictions
 				if route.proxy:
 					opts["proxy"] = route.proxy
+				else:
+					opts["proxy"] = os.getenv("EXTERNAL_PROXY_URL")
 
 				info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
 				mark_success(route.key)
