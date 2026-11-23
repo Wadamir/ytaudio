@@ -9,7 +9,8 @@ services:
       - ./storage/audio:/storage/audio
       - ./storage/db:/storage/db
     networks:
-      - ytaudio_net
+      ytaudio_net:
+        ipv4_address: 172.25.0.3
     depends_on:
       proxy-primary:
         condition: service_started
@@ -17,28 +18,37 @@ services:
         condition: service_started
     environment:
       - PYTHONPATH=/app
-      # Proxy settings for internal yt-dlp downloader core
-      - YT_PROXY_PRIMARY=socks5h://proxy-primary:1080
-      - YT_PROXY_SECONDARY=socks5h://proxy-secondary:1080
-      # Force httpx to delegate DNS resolution to the proxy container using socks5h://
-      - HTTP_PROXY=socks5h://proxy-primary:1080
-      - HTTPS_PROXY=socks5h://proxy-primary:1080
+      # Use hardcoded static IP addresses to completely bypass Docker DNS lookups
+      - YT_PROXY_PRIMARY=socks5h://172.25.0.5:1080
+      - YT_PROXY_SECONDARY=socks5h://172.25.0.6:1080
+      - HTTP_PROXY=socks5h://172.25.0.5:1080
+      - HTTPS_PROXY=socks5h://172.25.0.5:1080
 
-  # Primary proxy infrastructure container
+  # Primary proxy infrastructure container with a static IP
   proxy-primary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-primary
     restart: unless-stopped
     networks:
-      - ytaudio_net
+      ytaudio_net:
+        ipv4_address: 172.25.0.5
 
-  # Secondary backup proxy infrastructure container
+  # Secondary backup proxy infrastructure container with a static IP
   proxy-secondary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-secondary
     restart: unless-stopped
     networks:
-      - ytaudio_net
+      ytaudio_net:
+        ipv4_address: 172.25.0.6
+
+networks:
+  ytaudio_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
 
 
   # nginx:
@@ -57,5 +67,5 @@ services:
   #   networks:
   #     - ytaudio_net
 
-networks:
-  ytaudio_net:
+# networks:
+#   ytaudio_net:
