@@ -121,6 +121,8 @@ class YouTubeDownloader(BaseDownloader):
 			ctx.ua_profile = ua_profile
 
 		opts = {
+			# Force the global Lithuanian proxy string into core configuration options
+			"proxy": os.getenv("EXTERNAL_PROXY_URL"),
 			"cookies": str(YTDLP_COOKIES_PATH),
 			"quiet": True,
 			"socket_timeout": 30,
