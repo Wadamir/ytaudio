@@ -12,12 +12,10 @@ services:
       - ytaudio_net
     environment:
       - PYTHONPATH=/app
-      # System proxy for python-telegram-bot connection engine
       - HTTP_PROXY=${EXTERNAL_PROXY_URL}
       - HTTPS_PROXY=${EXTERNAL_PROXY_URL}
-      # Global force variable for yt-dlp binary core
+      # Overwrite the Dockerfile ENV parameter with your active Lithuania proxy string directly
       - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
-      # Override the default values inside bot/config/network.py directly
       - YT_PROXY_PRIMARY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_SECONDARY=${EXTERNAL_PROXY_URL}
 
