@@ -12,17 +12,13 @@ services:
       - ytaudio_net
     environment:
       - PYTHONPATH=/app
-      - HTTP_PROXY=${EXTERNAL_PROXY_URL}
-      - HTTPS_PROXY=${EXTERNAL_PROXY_URL}
-      # Overwrite the Dockerfile ENV parameter with your active Lithuania proxy string directly
+      # Leave proxy configurations strictly for the internal yt-dlp core architecture
       - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_PRIMARY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_SECONDARY=${EXTERNAL_PROXY_URL}
 
 networks:
   ytaudio_net:
-
-
 
 
   # nginx:
