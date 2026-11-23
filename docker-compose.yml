@@ -17,21 +17,21 @@ services:
       - YT_PROXY_PRIMARY=socks5h://host.docker.internal:1080
       - YT_PROXY_SECONDARY=socks5h://host.docker.internal:1081
 
-  nginx:
-    image: nginx:alpine
-    container_name: tg-ytaudio-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./storage/audio:/storage/audio:ro
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    depends_on:
-      - bot
-    networks:
-      - ytaudio_net
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: tg-ytaudio-nginx
+  #   restart: unless-stopped
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./storage/audio:/storage/audio:ro
+  #     - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+  #     - /etc/letsencrypt:/etc/letsencrypt:ro
+  #   depends_on:
+  #     - bot
+  #   networks:
+  #     - ytaudio_net
 
 networks:
   ytaudio_net:
