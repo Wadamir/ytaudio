@@ -23,7 +23,7 @@ services:
 
   # Primary proxy server
   proxy-primary:
-    image: serjs/go-socks5:latest
+    mage: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-primary
     restart: unless-stopped
     # Uncomment lines below and set credentials if your proxy requires authentication:
@@ -35,7 +35,7 @@ services:
 
   # Secondary backup proxy server
   proxy-secondary:
-    image: serjs/go-socks5:latest
+    mage: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-secondary
     restart: unless-stopped
     # environment:
