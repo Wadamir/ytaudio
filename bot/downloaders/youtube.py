@@ -70,6 +70,18 @@ class YouTubeDownloader(BaseDownloader):
 		return "youtube.com" in url or "youtu.be" in url
 	
 	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
+		# Pre-flight proxy check block to print the actual external IP to container logs
+		try:
+			import httpx
+			proxy_url = os.getenv("EXTERNAL_PROXY_URL")
+			logger.info("[proxy-check] Testing routing endpoint using proxy configuration...")
+			
+			with httpx.Client(proxies=proxy_url, timeout=5.0) as client:
+				current_ip = client.get("https://icanhazip.com").text.strip()
+				logger.info("[proxy-check] Verified external exit node IP address: %s", current_ip)
+		except Exception as proxy_err:
+			logger.error("[proxy-check] Failed to resolve exit node IP address via proxy: %s", proxy_err)
+
 		for route in iter_routes():
 			logger.info(
 				"[downloader] Trying to fetch info via route: %s (proxy=%s)",
