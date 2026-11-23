@@ -12,9 +12,10 @@ services:
       - ytaudio_net
     environment:
       - PYTHONPATH=/app
-      # Route all python-telegram-bot (httpx) traffic directly through the external proxy
       - HTTP_PROXY=${EXTERNAL_PROXY_URL}
       - HTTPS_PROXY=${EXTERNAL_PROXY_URL}
+      # Force yt-dlp to route everything through the Lithuanian proxy directly
+      - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
 
 networks:
   ytaudio_net:
