@@ -13,18 +13,18 @@ services:
         ipv4_address: 172.25.0.3
     depends_on:
       proxy-primary:
-        condition: service_started
+        condition: service_healthy # Wait for proxy to pass health check before starting the bot
       proxy-secondary:
-        condition: service_started
+        condition: service_healthy
     environment:
       - PYTHONPATH=/app
-      # Use hardcoded static IP addresses to completely bypass Docker DNS lookups
+      # Static internal IPs to bypass internal Docker DNS lookups entirely
       - YT_PROXY_PRIMARY=socks5h://172.25.0.5:1080
       - YT_PROXY_SECONDARY=socks5h://172.25.0.6:1080
       - HTTP_PROXY=socks5h://172.25.0.5:1080
       - HTTPS_PROXY=socks5h://172.25.0.5:1080
 
-  # Primary proxy infrastructure container with a static IP
+  # Primary proxy infrastructure container
   proxy-primary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-primary
@@ -32,8 +32,14 @@ services:
     networks:
       ytaudio_net:
         ipv4_address: 172.25.0.5
+    # Healthcheck configuration testing if the port is ready to accept routing traffic
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1080 || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 3
 
-  # Secondary backup proxy infrastructure container with a static IP
+  # Secondary backup proxy infrastructure container
   proxy-secondary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-secondary
@@ -41,6 +47,11 @@ services:
     networks:
       ytaudio_net:
         ipv4_address: 172.25.0.6
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 1080 || exit 1"]
+      interval: 3s
+      timeout: 2s
+      retries: 3
 
 networks:
   ytaudio_net:
@@ -48,6 +59,7 @@ networks:
     ipam:
       config:
         - subnet: 172.25.0.0/16
+
 
 
 
