@@ -15,7 +15,7 @@ help:
 	@echo "  make restart  - Completely restart bot infrastructure with fresh environment configurations"
 	@echo "  make status   - Show actual status of infrastructure containers"
 	@echo "  make logs     - Follow latest container runtime output streams"
-	@echo "  make db-reset - Safely clear internal sqlite database state tables to refresh proxy routes"
+	@echo "  make db-reset - Safely clear internal database and force clean rebuild with no-cache flag"
 
 # Build image and launch container infrastructure
 up:
@@ -36,14 +36,15 @@ status:
 logs:
 	docker compose logs -f bot --tail 50
 
-# Remove internal database state structures forcing route re-indexing configuration flows
+# Remove internal database state structures and perform a forced clean image rebuild without cache
 db-reset:
 	@if [ -f $(DB_FILE_PATH) ]; then \
 		docker compose down; \
 		rm -f $(DB_FILE_PATH); \
 		echo "Database file $(DB_FILE_PATH) successfully removed."; \
-		docker compose up -d --build; \
+		docker compose build --no-cache && docker compose up -d; \
 	else \
-		echo "Database file $(DB_FILE_PATH) does not exist. Starting environment normally..."; \
-		docker compose up -d --build; \
+		echo "Database file $(DB_FILE_PATH) does not exist. Executing forced clean re-build..."; \
+		docker compose down; \
+		docker compose build --no-cache && docker compose up -d; \
 	fi
