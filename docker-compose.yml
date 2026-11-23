@@ -9,43 +9,15 @@ services:
       - ./storage/audio:/storage/audio
       - ./storage/db:/storage/db
     networks:
-      ytaudio_net:
-        ipv4_address: 172.25.0.3
-    depends_on:
-      - proxy-primary
-      - proxy-secondary
+      - ytaudio_net
     environment:
       - PYTHONPATH=/app
-      # Static internal IPs to bypass internal Docker DNS lookups entirely
-      - YT_PROXY_PRIMARY=socks5h://172.25.0.5:1080
-      - YT_PROXY_SECONDARY=socks5h://172.25.0.6:1080
-      - HTTP_PROXY=socks5h://172.25.0.5:1080
-      - HTTPS_PROXY=socks5h://172.25.0.5:1080
-
-  # Primary proxy infrastructure container
-  proxy-primary:
-    image: serjs/go-socks5-proxy:latest
-    container_name: ytaudio-proxy-primary
-    restart: unless-stopped
-    networks:
-      ytaudio_net:
-        ipv4_address: 172.25.0.5
-
-  # Secondary backup proxy infrastructure container
-  proxy-secondary:
-    image: serjs/go-socks5-proxy:latest
-    container_name: ytaudio-proxy-secondary
-    restart: unless-stopped
-    networks:
-      ytaudio_net:
-        ipv4_address: 172.25.0.6
+      # Route all python-telegram-bot (httpx) traffic directly through the external proxy
+      - HTTP_PROXY=${EXTERNAL_PROXY_URL}
+      - HTTPS_PROXY=${EXTERNAL_PROXY_URL}
 
 networks:
   ytaudio_net:
-    driver: bridge
-    ipam:
-      config:
-        - subnet: 172.25.0.0/16
 
 
 
