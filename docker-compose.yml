@@ -1,3 +1,5 @@
+# version: '3.8'
+
 services:
   bot:
     build: .
@@ -10,12 +12,37 @@ services:
       - ./storage/db:/storage/db
     networks:
       - ytaudio_net
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      - proxy-primary
+      - proxy-secondary
     environment:
       - PYTHONPATH=/app
-      - YT_PROXY_PRIMARY=socks5h://host.docker.internal:1080
-      - YT_PROXY_SECONDARY=socks5h://host.docker.internal:1081
+      # Use container names instead of host.docker.internal since they share the same network
+      - YT_PROXY_PRIMARY=socks5h://proxy-primary:1080
+      - YT_PROXY_SECONDARY=socks5h://proxy-secondary:1080
+
+  # Primary proxy server
+  proxy-primary:
+    image: serjs/go-socks5:latest
+    container_name: ytaudio-proxy-primary
+    restart: unless-stopped
+    # Uncomment lines below and set credentials if your proxy requires authentication:
+    # environment:
+    #   - PROXY_USER=username
+    #   - PROXY_PASSWORD=password
+    networks:
+      - ytaudio_net
+
+  # Secondary backup proxy server
+  proxy-secondary:
+    image: serjs/go-socks5:latest
+    container_name: ytaudio-proxy-secondary
+    restart: unless-stopped
+    # environment:
+    #   - PROXY_USER=username
+    #   - PROXY_PASSWORD=password
+    networks:
+      - ytaudio_net
 
   # nginx:
   #   image: nginx:alpine
