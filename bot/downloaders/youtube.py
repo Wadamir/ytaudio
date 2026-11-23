@@ -67,7 +67,22 @@ class YouTubeDownloader(BaseDownloader):
 	name = "youtube"
 
 	def can_handle(self, url: str) -> bool:
-		return "youtube.com" in url or "youtu.be" in url
+		from urllib.parse import urlparse
+
+		try:
+			parsed = urlparse(url.strip())
+		except (TypeError, ValueError):
+			return False
+
+		if parsed.scheme not in {"http", "https"}:
+			return False
+
+		host = (parsed.hostname or "").lower().rstrip(".")
+		return (
+			host == "youtube.com"
+			or host.endswith(".youtube.com")
+			or host == "youtu.be"
+		)
 	
 	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
 		# Pre-flight diagnostic block: test host IP, proxy routing, cookies layout, and YouTube connection
@@ -133,11 +148,10 @@ class YouTubeDownloader(BaseDownloader):
 			try:
 				opts = self._base_opts(ctx)
 
-				# Force external Lithuania proxy even for direct routing attempts to pass host restrictions
 				if route.proxy:
 					opts["proxy"] = route.proxy
 				else:
-					opts["proxy"] = os.getenv("EXTERNAL_PROXY_URL")
+					opts.pop("proxy", None)
 
 				info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
 				mark_success(route.key)

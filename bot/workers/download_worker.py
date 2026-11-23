@@ -10,7 +10,12 @@ from typing import Dict
 from telegram import Bot  # type: ignore
 from telegram.error import TelegramError  # type: ignore
 
-from bot.db.db import increment_downloads, log_download, log_youtube_error
+from bot.db.db import (
+	increment_downloads,
+	log_download,
+	log_youtube_error,
+	clear_download_reservation,
+)
 from bot.i18n.helpers import tr_user
 from bot.utils.format import format_duration
 
@@ -34,6 +39,7 @@ from bot.pipeline.errors import (
 	PostProcessingNoDuration,
 	FileTooLarge,
 	DeliveryFailed,
+	DeliveryUnsupportedMethod,
 )
 
 from bot.utils.inflight import get_inflight_messages, pop_inflight_messages, clear_inflight
@@ -264,17 +270,6 @@ async def process_job(job: Dict, bot: Bot):
 			# 	text=tr_user(user_id, "failed_download"),
 			# )
 
-		except PipelineError as e:
-			ctx.status = "failed"
-			ctx.fallback_reason = "failed_processing"			
-			ctx.error_message = str(e)
-
-			# await bot.edit_message_text(
-			# 	chat_id=chat_id,
-			# 	message_id=message_id,
-			# 	text=tr_user(user_id, "failed_processing"),
-			# )	
-
 		except PostProcessingFailed as e:
 			ctx.status = "failed"
 			ctx.fallback_reason = "failed_processing"
@@ -319,6 +314,16 @@ async def process_job(job: Dict, bot: Bot):
 			# 	text=tr_user(user_id, "failed_sending_audio"),
 			# )
 
+		except DeliveryUnsupportedMethod as e:
+			ctx.status = "failed"
+			ctx.fallback_reason = "failed_processing"
+			ctx.error_message = str(e)
+
+		except PipelineError as e:
+			ctx.status = "failed"
+			ctx.fallback_reason = "failed_processing"
+			ctx.error_message = str(e)
+
 	except Exception as e:
 		logger.exception("[worker] unexpected fatal error")
 
@@ -339,73 +344,63 @@ async def process_job(job: Dict, bot: Bot):
 	finally:
 		if not ctx:
 			return
-		
-		ctx.processing_time_ms = int(
-			(asyncio.get_event_loop().time() - start_ts) * 1000
-		)
-		log_download(**build_log_payload(ctx))
-
-		text_key = ctx.fallback_reason or "failed_worker"
-
-		if ctx.status == "success":
-			increment_downloads(ctx.user_id)
-			logger.info(
-				"[worker] job success for %s in %d ms",
-				ctx.user_id,
-				ctx.processing_time_ms,
-			)
-			text_key = "job_completed"
-			# await bot.edit_message_text(
-			# 	chat_id=chat_id,
-			# 	message_id=message_id,
-			# 	text=tr_user(user_id, "job_completed"),
-			# )
-			# for msg_id in pop_inflight_messages(ctx.user_id, ctx.video_url):
-			# 	try:
-			# 		await bot.edit_message_text(
-			# 			chat_id=chat_id,
-			# 			message_id=msg_id,
-			# 			text=tr_user(user_id, "job_completed"),
-			# 		)
-			# 	except TelegramError:
-			# 		pass
-		else:
-			logger.info(
-				"[worker] job failed for %s in %d ms: %s",
-				ctx.user_id,
-				ctx.processing_time_ms,
-				ctx.fallback_reason or ctx.error_message,
-			)
-			if ctx.fallback_reason in YOUTUBE_ERRORS:
-				try:
-					log_youtube_error(
-						error_type=ctx.fallback_reason,
-						video_id=ctx.video_id,
-						video_url=ctx.video_url,
-						ua_profile=ctx.ua_profile,
-						error_message=ctx.error_message
-					)
-				except Exception as e:
-					logger.warning(f"[worker] failed to log youtube error: {e}")
 
 		try:
-			# msg_ids = await get_inflight_messages(ctx.user_id, ctx.video_url)
-			for msg_id in await pop_inflight_messages(ctx.user_id, ctx.video_url):
-				logger.debug(f"[worker] updating inflight message {msg_id} for user {ctx.user_id}")
-				try:
-					await bot.edit_message_text(
-						chat_id=chat_id,
-						message_id=msg_id,
-						text=tr_user(user_id, text_key),
-					)
-				except TelegramError:
-					pass
-		except TelegramError:
-			pass
+			ctx.processing_time_ms = int(
+				(asyncio.get_event_loop().time() - start_ts) * 1000
+			)
+			try:
+				log_download(**build_log_payload(ctx))
+			except Exception as e:
+				logger.exception("[worker] failed to log download result: %s", e)
 
-		#try clean inflight
-		# await clear_inflight(ctx.user_id, ctx.video_url)
-		
-		# cleanup files
-		cleanup_files(ctx.downloaded_files)
-		cleanup_files(ctx.output_files)	
+			text_key = ctx.fallback_reason or "failed_worker"
+
+			if ctx.status == "success":
+				try:
+					increment_downloads(ctx.user_id)
+				except Exception as e:
+					logger.exception("[worker] failed to increment download count: %s", e)
+				logger.info(
+					"[worker] job success for %s in %d ms",
+					ctx.user_id,
+					ctx.processing_time_ms,
+				)
+				text_key = "job_completed"
+			else:
+				logger.info(
+					"[worker] job failed for %s in %d ms: %s",
+					ctx.user_id,
+					ctx.processing_time_ms,
+					ctx.fallback_reason or ctx.error_message,
+				)
+				if ctx.fallback_reason in YOUTUBE_ERRORS:
+					try:
+						log_youtube_error(
+							error_type=ctx.fallback_reason,
+							video_id=ctx.video_id,
+							video_url=ctx.video_url,
+							ua_profile=ctx.ua_profile,
+							error_message=ctx.error_message
+						)
+					except Exception as e:
+						logger.warning(f"[worker] failed to log youtube error: {e}")
+
+			try:
+				for msg_id in await pop_inflight_messages(ctx.user_id, ctx.video_url):
+					logger.debug(f"[worker] updating inflight message {msg_id} for user {ctx.user_id}")
+					try:
+						await bot.edit_message_text(
+							chat_id=chat_id,
+							message_id=msg_id,
+							text=tr_user(user_id, text_key),
+						)
+					except TelegramError:
+						pass
+			except Exception as e:
+				logger.exception("[worker] failed to update inflight messages: %s", e)
+				await clear_inflight(ctx.user_id, ctx.video_url)
+		finally:
+			clear_download_reservation(ctx.user_id, ctx.video_url)
+			cleanup_files(ctx.downloaded_files)
+			cleanup_files(ctx.output_files)

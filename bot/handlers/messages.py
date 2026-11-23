@@ -3,7 +3,13 @@ import logging
 from telegram import Update # type: ignore
 from telegram.ext import ContextTypes # type: ignore
 
-from bot.db.db import register_user, can_user_download, get_user_language, set_user_language
+from bot.db.db import (
+	register_user,
+	reserve_download_slot,
+	clear_download_reservation,
+	get_user_language,
+	set_user_language,
+)
 from bot.i18n.helpers import tr, tr_user
 from bot.i18n.keyboards import user_reply_keyboard
 from bot.utils.time import time_until_utc_reset
@@ -22,6 +28,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	user = update.effective_user
 	message = update.message
+	register_user(user)
 
 	lang = get_user_language(user.id)
 	
@@ -38,7 +45,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 	# check limits
-	allowed, used, limit, plan = can_user_download(user.id)
+	url = message.text.strip()
+
+	if not is_supported_url(url):
+		await message.reply_text(
+			tr_user(user.id, "unsupported_platform")
+		)
+		return
+
+	allowed, used, limit, plan = reserve_download_slot(user.id, url)
 	if not allowed:
 		await message.reply_text(
 			tr_user(
@@ -50,14 +65,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 				reset_in=time_until_utc_reset(),
 			),
 			parse_mode="HTML",
-		)
-		return
-
-	url = message.text.strip()
-
-	if not is_supported_url(url):
-		await message.reply_text(
-			tr_user(user.id, "unsupported_platform")
 		)
 		return
 		
@@ -96,5 +103,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		await message.reply_text(
 			tr_user(user.id, "failed_worker")
 		)
+		clear_download_reservation(user.id, url)
 		await clear_inflight(user.id, url)
 		raise e

@@ -194,6 +194,18 @@ def init_db():
 			)
 		""")
 
+		# --- download reservations ---
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS download_reservations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id INTEGER NOT NULL,
+				video_url TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				UNIQUE (user_id, video_url),
+				FOREIGN KEY (user_id) REFERENCES users(user_id)
+			)
+		""")
+
 		# --- Indexes ---
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_youtube_errors_type_date
@@ -606,6 +618,83 @@ def can_user_download(user_id: int) -> tuple[bool, int, int, str]:
 		used_today = get_user_downloads_today(user_id, conn)
 
 		return used_today < daily_limit, used_today, daily_limit, plan
+
+
+def reserve_download_slot(
+	user_id: int,
+	video_url: str,
+) -> tuple[bool, int, int, str]:
+	with get_conn() as conn:
+		conn.execute("BEGIN IMMEDIATE")
+		_normalize_user_plan_if_needed(conn, user_id)
+
+		cur = conn.execute("""
+			SELECT
+				p.daily_limit,
+				p.name
+			FROM users u
+			JOIN plans p ON u.plan_id = p.plan_id
+			WHERE u.user_id = ?
+		""", (user_id,))
+		row = cur.fetchone()
+
+		if not row:
+			conn.rollback()
+			return False, 0, 0, "unknown"
+
+		daily_limit, plan = row
+		today = utc_today_iso()
+
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM downloads
+			WHERE user_id = ?
+				AND status = 'success'
+				AND DATE(created_at) = ?
+		""", (user_id, today))
+		successful_today = cur.fetchone()[0]
+
+		cur = conn.execute("""
+			SELECT COUNT(*)
+			FROM download_reservations r
+			WHERE r.user_id = ?
+				AND DATE(r.created_at) = ?
+				AND NOT EXISTS (
+					SELECT 1
+					FROM downloads d
+					WHERE d.user_id = r.user_id
+						AND d.video_url = r.video_url
+						AND d.status = 'success'
+						AND DATE(d.created_at) = ?
+				)
+		""", (user_id, today, today))
+		reserved_today = cur.fetchone()[0]
+		used_today = successful_today + reserved_today
+
+		if used_today >= daily_limit:
+			conn.rollback()
+			return False, used_today, daily_limit, plan
+
+		cursor = conn.execute("""
+			INSERT OR IGNORE INTO download_reservations (
+				user_id,
+				video_url,
+				created_at
+			)
+			VALUES (?, ?, ?)
+		""", (user_id, video_url, utc_now_iso()))
+		conn.commit()
+
+		return True, used_today + (1 if cursor.rowcount else 0), daily_limit, plan
+
+
+def clear_download_reservation(user_id: int, video_url: str) -> None:
+	with get_conn() as conn:
+		conn.execute("""
+			DELETE FROM download_reservations
+			WHERE user_id = ? AND video_url = ?
+		""", (user_id, video_url))
+		conn.commit()
 	
 
 def can_user_subscribe(user_id: int) -> tuple[bool, int, int, str]:

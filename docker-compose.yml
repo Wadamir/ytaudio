@@ -13,6 +13,7 @@ services:
     environment:
       - PYTHONPATH=/app
       # Leave proxy configurations strictly for the internal yt-dlp core architecture
+      - YT_ROUTING_MODE=${YT_ROUTING_MODE:-direct_proxy}
       - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_PRIMARY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_SECONDARY=${EXTERNAL_PROXY_URL}

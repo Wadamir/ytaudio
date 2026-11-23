@@ -36,7 +36,11 @@ async def deliver(ctx: DownloadContext, bot: Bot, chat_id: int):
     if ctx.delivery_method == "telegram" or ctx.delivery_method == "telegram_split":
         for part in ctx.output_files:
             part_title = ctx.video_title
-            part_duration = ctx.duration_seconds / len(ctx.output_files) if ctx.duration_seconds else 0
+            part_duration = (
+                int(ctx.duration_seconds / len(ctx.output_files))
+                if ctx.duration_seconds
+                else 0
+            )
             if len(ctx.output_files) > 1:
                 part_index = ctx.output_files.index(part) + 1
                 part_title = f"Part {part_index}/{len(ctx.output_files)} - {ctx.video_title}"

@@ -10,3 +10,4 @@ services:
     environment:
       - PYTHONPATH=/app
       - RESET_DB_ON_START=true
+      - YT_ROUTING_MODE=${YT_ROUTING_MODE:-direct_proxy}

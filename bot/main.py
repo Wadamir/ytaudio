@@ -31,38 +31,25 @@ def main():
 	init_db()
 	validate_translations()
 
-	# Fetch configuration variables mapping directly from environment contexts
+	# Fetch configuration variables mapping directly from hidden environment context
 	proxy_url = os.getenv("EXTERNAL_PROXY_URL")
 	request_config = None
 
 	if proxy_url:
-		from urllib.parse import urlparse
-		# Parse the proxy string dynamically without exposing plain credentials in code layout
-		parsed_url = urlparse(proxy_url)
-		
-		proxy_host = f"{parsed_url.scheme}://{parsed_url.hostname}:{parsed_url.port}"
-		proxy_user = parsed_url.username
-		proxy_password = parsed_url.password
-
-		# Build authorized request configuration object dynamically using variables
+		# Build a native authorized request object directly passing the proxy URL string
 		request_config = HTTPXRequest(
-			proxy=proxy_host,
-			proxy_kwargs={
-				"username": proxy_user,
-				"password": proxy_password
-			},
+			proxy=proxy_url,
 			connect_timeout=20.0,
 			read_timeout=20.0
 		)
+		logging.info("Native proxy architecture verified and injected into request core.")
 
-	app = (
-		ApplicationBuilder()
-		.token(BOT_TOKEN)
-		.request(request_config) if request_config else ApplicationBuilder().token(BOT_TOKEN)
-	)
-	
-	# Apply final orchestration hooks to the builder instances
-	app = app.post_init(post_init).build()
+	# Configure the application builder lifecycle cleanly
+	builder = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init)
+	if request_config:
+		builder = builder.request(request_config)
+
+	app = builder.build()
 
 	register_handlers(app)
 
