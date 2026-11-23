@@ -76,7 +76,8 @@ class YouTubeDownloader(BaseDownloader):
 			proxy_url = os.getenv("EXTERNAL_PROXY_URL")
 			logger.info("[proxy-check] Testing routing endpoint using proxy configuration...")
 			
-			with httpx.Client(proxies=proxy_url, timeout=5.0) as client:
+			# Fixed argument from 'proxies' to 'proxy' for httpx compatibility
+			with httpx.Client(proxy=proxy_url, timeout=5.0) as client:
 				current_ip = client.get("https://icanhazip.com").text.strip()
 				logger.info("[proxy-check] Verified external exit node IP address: %s", current_ip)
 		except Exception as proxy_err:
