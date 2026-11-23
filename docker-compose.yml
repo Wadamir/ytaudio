@@ -1,5 +1,3 @@
-# version: '3.8'
-
 services:
   bot:
     build: .
@@ -17,19 +15,18 @@ services:
       - proxy-secondary
     environment:
       - PYTHONPATH=/app
-      # Use container names instead of host.docker.internal since they share the same network
+      # Proxy for yt-dlp internal downloader logic
       - YT_PROXY_PRIMARY=socks5h://proxy-primary:1080
       - YT_PROXY_SECONDARY=socks5h://proxy-secondary:1080
+      # System-wide proxy variables forcing python-telegram-bot (httpx) to route through our proxy container
+      - HTTP_PROXY=socks5h://proxy-primary:1080
+      - HTTPS_PROXY=socks5h://proxy-primary:1080
 
   # Primary proxy server
   proxy-primary:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-primary
     restart: unless-stopped
-    # Uncomment lines below and set credentials if your proxy requires authentication:
-    # environment:
-    #   - PROXY_USER=username
-    #   - PROXY_PASSWORD=password
     networks:
       - ytaudio_net
 
@@ -38,11 +35,9 @@ services:
     image: serjs/go-socks5-proxy:latest
     container_name: ytaudio-proxy-secondary
     restart: unless-stopped
-    # environment:
-    #   - PROXY_USER=username
-    #   - PROXY_PASSWORD=password
     networks:
       - ytaudio_net
+
 
   # nginx:
   #   image: nginx:alpine
