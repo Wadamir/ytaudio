@@ -12,12 +12,12 @@ services:
       - ytaudio_net
     environment:
       - PYTHONPATH=/app
-      # Global system routing for Python HTTP clients
+      # System proxy for python-telegram-bot connection engine
       - HTTP_PROXY=${EXTERNAL_PROXY_URL}
       - HTTPS_PROXY=${EXTERNAL_PROXY_URL}
-      # Force core yt-dlp binary to always use the proxy tunnel globally
+      # Global force variable for yt-dlp binary core
       - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
-      # Map container environment to bot's internal proxy selection logic
+      # Override the default values inside bot/config/network.py directly
       - YT_PROXY_PRIMARY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_SECONDARY=${EXTERNAL_PROXY_URL}
 
