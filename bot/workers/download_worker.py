@@ -171,7 +171,8 @@ async def process_job(job: Dict, bot: Bot):
 				download_lines.append(download_text)
 			download_eta = progress_status_data.get("download_eta")
 			if (
-				download_percent is not None
+				progress_status_data.get("total_size") is not None
+				and download_percent is not None
 				and download_percent >= 5
 				and download_eta is not None
 			):

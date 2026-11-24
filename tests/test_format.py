@@ -22,13 +22,14 @@ class FormatTests(unittest.TestCase):
 	def test_download_progress_hides_size_below_five_percent(self):
 		self.assertEqual(
 			format_download_progress("0.4 MiB", "100 MiB", 4),
-			"4%",
+			None,
 		)
 		self.assertEqual(
 			format_download_progress("5.0 MiB", "100 MiB", 5),
 			"5.0 MiB / 100 MiB (5%)",
 		)
 		self.assertIsNone(format_download_progress("1.0 MiB", None, None))
+		self.assertIsNone(format_download_progress("1.0 MiB", None, 50))
 
 
 if __name__ == "__main__":

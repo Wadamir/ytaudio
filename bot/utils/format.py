@@ -67,14 +67,16 @@ def format_download_progress(
 	total_size: Optional[str],
 	percent: Optional[int],
 ) -> Optional[str]:
-	if percent is None:
+	if (
+		percent is None
+		or percent < 5
+		or downloaded_size is None
+		or total_size is None
+	):
 		return None
-	if percent < 5 or downloaded_size is None:
-		return f"{percent}%"
 
 	amount = downloaded_size
-	if total_size is not None:
-		amount += f" / {total_size}"
+	amount += f" / {total_size}"
 	return f"{amount} ({percent}%)"
 
 
