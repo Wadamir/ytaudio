@@ -1,4 +1,5 @@
 # bot/pipeline/delivery.py
+import logging
 from pathlib import Path
 
 from telegram import Bot  # type: ignore
@@ -11,6 +12,8 @@ from bot.config.bot import (
     BOT_USERNAME,
     BOT_CAPTION_PREFIX,
 )
+
+logger = logging.getLogger(__name__)
 
 
 async def _send_audio_telegram(bot: Bot, chat_id: int, file: Path, title: str = "", performer: str = "", duration: int = 0, caption: str = ""):
@@ -25,6 +28,12 @@ async def _send_audio_telegram(bot: Bot, chat_id: int, file: Path, title: str = 
                 caption=caption,
             )
     except TelegramError as e:
+        cause = e.__cause__
+        logger.warning(
+            "[delivery] Telegram send_audio failed (%s; cause=%s)",
+            type(e).__name__,
+            type(cause).__name__ if cause else "none",
+        )
         raise DeliveryFailed(f"Telegram delivery failed: {e}") from e
 
 

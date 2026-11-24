@@ -254,7 +254,8 @@ def main():
 	request_config = HTTPXRequest(
 		proxy=telegram_proxy,
 		connect_timeout=20.0,
-		read_timeout=20.0,
+		read_timeout=60.0,
+		media_write_timeout=180.0,
 		httpx_kwargs={"trust_env": False},
 	)
 	get_updates_request_config = HTTPXRequest(

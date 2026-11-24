@@ -19,7 +19,18 @@ TEXTS = {
 
 
     "unsupported_platform": "❌ Please send a valid link.",
-    "already_inflight": "⏳ This video is already being processed. Please wait for the current task to complete.",
+    "already_inflight": "⏳ This video is already being processed. I won't start a duplicate; I'll post the result here when it's done.",
+
+    "progress_1": "Still fetching audio — bits don't download themselves. 🎧",
+    "progress_2": "Negotiating with YouTube. The coffee break is still pending. 🤝",
+    "progress_3": "Navigating the proxy maze. 🧭",
+    "progress_4": "Turning sound waves into a file that fits in your pocket. 🌊",
+    "progress_5": "Making sure no video pixels sneak into your audio. 🎬",
+    "progress_6": "Traffic on the data highway — waving the bits through one by one. 🚦",
+    "progress_7": "Packing megabytes, not your patience. 📦",
+    "progress_8": "The audio picked the scenic route. 🏞️",
+    "progress_9": "Checking whether any bytes are rebelling in the soundtrack. 🔍",
+    "progress_10": "Still on it. My tiny digital headphones are on. 🎧",
 
     "video_unavailable": "❌ Video is unavailable.",
     "live_stream": "❌ Live streams are not supported.",

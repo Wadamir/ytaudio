@@ -10,13 +10,12 @@ from bot.db.db import (
 	get_user_language,
 	set_user_language,
 )
-from bot.i18n.helpers import tr, tr_user
-from bot.i18n.keyboards import user_reply_keyboard
+from bot.i18n.helpers import tr_user
 from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.downloaders.registry import is_supported_url
 from bot.handlers.menu import handle_menu
-from bot.utils.inflight import is_inflight, mark_inflight, clear_inflight
+from bot.utils.inflight import canonical_inflight_key, mark_inflight, clear_inflight
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +43,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		return
 
 
-	# check limits
 	url = message.text.strip()
 
 	if not is_supported_url(url):
@@ -53,39 +51,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		)
 		return
 
-	allowed, used, limit, plan = reserve_download_slot(user.id, url)
-	if not allowed:
-		await message.reply_text(
-			tr_user(
-				user.id,
-				"daily_limit_reached",
-				plan=plan,
-				used=used,
-				limit=limit,
-				reset_in=time_until_utc_reset(),
-			),
-			parse_mode="HTML",
-		)
-		return
-		
-	# if await is_inflight(user.id, url):
-	# 	inflight_status = await update.message.reply_text(
-	# 		tr_user(user.id, "already_inflight")
-	# 	)
-	# 	await mark_inflight(user.id, url, inflight_status.message_id)
-	# 	return
+	inflight_key = canonical_inflight_key(url)
 
 	try:
 		# send "queued" message
 		status_msg = await message.reply_text(
 			tr_user(user.id, "queue"),
-			# reply_markup=user_reply_keyboard(user.id)
 		)
-		created_inflight = await mark_inflight(user.id, url, status_msg.message_id)
+		created_inflight = await mark_inflight(
+			user.id,
+			inflight_key,
+			status_msg.message_id,
+		)
 		
 		if not created_inflight:
 			await status_msg.edit_text(
 				tr_user(user.id, "already_inflight")
+			)
+			return
+
+		allowed, used, limit, plan = reserve_download_slot(user.id, url)
+		if not allowed:
+			await clear_inflight(user.id, inflight_key)
+			await status_msg.edit_text(
+				tr_user(
+					user.id,
+					"daily_limit_reached",
+					plan=plan,
+					used=used,
+					limit=limit,
+					reset_in=time_until_utc_reset(),
+				),
+				parse_mode="HTML",
 			)
 			return
 	
@@ -95,6 +92,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			"chat_id": message.chat_id,
 			"message_id": status_msg.message_id,
 			"url": url,
+			"inflight_key": inflight_key,
 		}
 
 		await download_queue.put(job)
@@ -104,5 +102,5 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 			tr_user(user.id, "failed_worker")
 		)
 		clear_download_reservation(user.id, url)
-		await clear_inflight(user.id, url)
+		await clear_inflight(user.id, inflight_key)
 		raise e

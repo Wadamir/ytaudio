@@ -43,7 +43,7 @@ from bot.pipeline.errors import (
 	DeliveryUnsupportedMethod,
 )
 
-from bot.utils.inflight import get_inflight_messages, pop_inflight_messages, clear_inflight
+from bot.utils.inflight import pop_inflight_messages, clear_inflight
 from bot.browser_auth import notify_admin_auth_required
 
 from bot.config.downloaders import MAX_DURATION_SECONDS
@@ -105,48 +105,92 @@ async def process_job(job: Dict, bot: Bot):
 
 	ctx: DownloadContext | None = None
 	start_ts = asyncio.get_event_loop().time()
+	inflight_key: str | None = None
 
 
 	# progress handler
 	progress_text: str | None = None
 	progress_lock = asyncio.Lock()
+	progress_status_key = "reading_info"
+	progress_status_data: dict = {}
+	progress_variant_index = 0
+	progress_active = True
+	heartbeat_task: asyncio.Task | None = None
 
-	async def handle_progress(stage: DownloadStage, data: dict):
-		nonlocal progress_text
+	async def update_progress_status(
+		*,
+		status_key: str | None = None,
+		status_data: dict | None = None,
+		advance_variant: bool = False,
+	):
+		nonlocal progress_text, progress_status_key
+		nonlocal progress_status_data, progress_variant_index
 
-		text: str | None = None
-		if stage == DownloadStage.INFO_READY:
-			text = tr_user(
-				user_id,
-				"info_ready",
-				duration=format_duration(data.get("duration_seconds")),
-			)
-		elif stage == DownloadStage.STARTING_DOWNLOAD or stage == DownloadStage.DOWNLOADING:
-			text = tr_user(
-				user_id,
-				"fast_mode" if data.get("processing_mode") == "fast_mode" else "slow_mode",
-				duration=format_duration(data.get("duration_seconds")),
-			)
-
-		if text is None:
+		if not progress_active:
 			return
 
-		try:
-			async with progress_lock:
-				if text == progress_text:
-					return
+		async with progress_lock:
+			if not progress_active:
+				return
+			if status_key is not None:
+				progress_status_key = status_key
+				progress_status_data = status_data or {}
+			if advance_variant:
+				progress_variant_index = (progress_variant_index + 1) % 10
+
+			base_text = tr_user(
+				user_id,
+				progress_status_key,
+				**progress_status_data,
+			)
+			update_text = tr_user(
+				user_id,
+				f"progress_{progress_variant_index + 1}",
+			)
+			text = f"{base_text}\n\n{update_text}"
+			if text == progress_text:
+				return
+
+			try:
 				await bot.edit_message_text(
 					chat_id=chat_id,
 					message_id=message_id,
 					text=text,
 				)
 				progress_text = text
-		except BadRequest as e:
-			if "message is not modified" not in str(e).lower():
+			except BadRequest as e:
+				if "message is not modified" not in str(e).lower():
+					logger.warning("[worker] progress notify failed: %s", e)
+			except TelegramError as e:
 				logger.warning("[worker] progress notify failed: %s", e)
-		except TelegramError as e:
-			# ⚠️ ignore errors here to not break the download flow
-			logger.warning("[worker] progress notify failed: %s", e)
+
+	async def handle_progress(stage: DownloadStage, data: dict):
+		if stage == DownloadStage.INFO_READY:
+			await update_progress_status(
+				status_key="info_ready",
+				status_data={
+					"duration": format_duration(data.get("duration_seconds")),
+				},
+			)
+		elif stage in {
+			DownloadStage.STARTING_DOWNLOAD,
+			DownloadStage.DOWNLOADING,
+		}:
+			await update_progress_status(
+				status_key=(
+					"fast_mode"
+					if data.get("processing_mode") == "fast_mode"
+					else "slow_mode"
+				),
+				status_data={
+					"duration": format_duration(data.get("duration_seconds")),
+				},
+			)
+
+	async def progress_heartbeat():
+		while True:
+			await asyncio.sleep(10)
+			await update_progress_status(advance_variant=True)
 
 
 	try:
@@ -154,6 +198,7 @@ async def process_job(job: Dict, bot: Bot):
 		chat_id = job["chat_id"]
 		message_id = job["message_id"]
 		url = job["url"]
+		inflight_key = str(job.get("inflight_key", url))
 
 		ctx = DownloadContext(
 			user_id=user_id,
@@ -166,12 +211,8 @@ async def process_job(job: Dict, bot: Bot):
 
 		# notify user
 		try:
-			await bot.edit_message_text(
-				chat_id=chat_id,
-				message_id=message_id,
-				text=tr_user(user_id, "reading_info"),
-			)
-			progress_text = tr_user(user_id, "reading_info")
+			await update_progress_status(status_key="reading_info")
+			heartbeat_task = asyncio.create_task(progress_heartbeat())
 		except TelegramError as e:
 			logger.warning(f"[worker] notify failed: {e}")
 
@@ -371,6 +412,14 @@ async def process_job(job: Dict, bot: Bot):
 		if not ctx:
 			return
 
+		progress_active = False
+		if heartbeat_task:
+			heartbeat_task.cancel()
+			try:
+				await heartbeat_task
+			except asyncio.CancelledError:
+				pass
+
 		try:
 			ctx.processing_time_ms = int(
 				(asyncio.get_event_loop().time() - start_ts) * 1000
@@ -413,19 +462,24 @@ async def process_job(job: Dict, bot: Bot):
 						logger.warning(f"[worker] failed to log youtube error: {e}")
 
 			try:
-				for msg_id in await pop_inflight_messages(ctx.user_id, ctx.video_url):
-					logger.debug(f"[worker] updating inflight message {msg_id} for user {ctx.user_id}")
-					try:
-						await bot.edit_message_text(
-							chat_id=chat_id,
-							message_id=msg_id,
-							text=tr_user(user_id, text_key),
-						)
-					except TelegramError:
-						pass
+				message_ids = await pop_inflight_messages(
+					ctx.user_id,
+					inflight_key or ctx.video_url,
+				)
+				async with progress_lock:
+					for msg_id in message_ids:
+						logger.debug(f"[worker] updating inflight message {msg_id} for user {ctx.user_id}")
+						try:
+							await bot.edit_message_text(
+								chat_id=chat_id,
+								message_id=msg_id,
+								text=tr_user(user_id, text_key),
+							)
+						except TelegramError:
+							pass
 			except Exception as e:
 				logger.exception("[worker] failed to update inflight messages: %s", e)
-				await clear_inflight(ctx.user_id, ctx.video_url)
+				await clear_inflight(ctx.user_id, inflight_key or ctx.video_url)
 		finally:
 			clear_download_reservation(ctx.user_id, ctx.video_url)
 			cleanup_files(ctx.downloaded_files)
