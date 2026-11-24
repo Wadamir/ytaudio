@@ -14,7 +14,8 @@ TEXTS = {
 
     "fast_mode": "⚡ Загрузка аудио (быстрый режим)\n⏱ Длительность: {duration}…",
 	"slow_mode": "⬇️ Загрузка аудио (перекодирование)\n⏱ Длительность: {duration}…\nПожалуйста, подождите...",  
-	"download_progress": "⬇️ Скачано: {percent}%",
+	"download_progress": "⬇️ Скачано: {amount}",
+	"download_eta": "⏳ Примерно осталось: {eta}",
 
     "job_completed": "✅ Ваша задача успешно выполнена.",
 

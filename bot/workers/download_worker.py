@@ -19,7 +19,7 @@ from bot.db.db import (
 )
 from bot.utils.timing import log_duration
 from bot.i18n.helpers import tr_user
-from bot.utils.format import format_duration
+from bot.utils.format import format_duration, format_eta, format_size_bytes
 
 from bot.downloaders.base import DownloadContext
 from bot.downloaders.registry import get_downloader
@@ -151,13 +151,36 @@ async def process_job(job: Dict, bot: Bot):
 				f"progress_{progress_variant_index + 1}",
 			)
 			download_percent = progress_status_data.get("download_percent")
-			if download_percent is not None:
+			download_lines = []
+			downloaded_size = progress_status_data.get("downloaded_size")
+			if downloaded_size is not None or download_percent is not None:
+				amount = (
+					str(downloaded_size)
+					if downloaded_size is not None
+					else ""
+				)
+				total_size = progress_status_data.get("total_size")
+				if total_size is not None and downloaded_size is not None:
+					amount += f" / {total_size}"
+				if download_percent is not None:
+					amount += (
+						f" ({download_percent}%)"
+						if downloaded_size is not None
+						else f"{download_percent}%"
+					)
 				download_text = tr_user(
 					user_id,
 					"download_progress",
-					percent=download_percent,
+					amount=amount,
 				)
-				text = f"{base_text}\n{download_text}\n\n{update_text}"
+				download_lines.append(download_text)
+			download_eta = progress_status_data.get("download_eta")
+			if download_eta is not None:
+				download_lines.append(
+					tr_user(user_id, "download_eta", eta=download_eta)
+				)
+			if download_lines:
+				text = f"{base_text}\n" + "\n".join(download_lines) + f"\n\n{update_text}"
 			else:
 				text = f"{base_text}\n\n{update_text}"
 			if text == progress_text:
@@ -182,7 +205,6 @@ async def process_job(job: Dict, bot: Bot):
 				status_key="info_ready",
 				status_data={
 					"duration": format_duration(data.get("duration_seconds")),
-					"download_percent": data.get("download_percent"),
 				},
 			)
 		elif stage in {
@@ -197,6 +219,12 @@ async def process_job(job: Dict, bot: Bot):
 				),
 				status_data={
 					"duration": format_duration(data.get("duration_seconds")),
+					"download_percent": data.get("percent"),
+					"downloaded_size": format_size_bytes(
+						data.get("downloaded_bytes")
+					),
+					"total_size": format_size_bytes(data.get("total_bytes")),
+					"download_eta": format_eta(data.get("eta_seconds")),
 				},
 			)
 
