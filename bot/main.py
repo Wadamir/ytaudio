@@ -7,7 +7,13 @@ from urllib.parse import urlsplit
 
 import httpx
 from socksio.exceptions import SOCKSError
-from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore
+from telegram.error import NetworkError
+from telegram.ext import (
+	Application,
+	ApplicationBuilder,
+	MessageHandler,
+	filters,
+)  # type: ignore
 from telegram.request import HTTPXRequest
 
 from bot.config.downloaders import (
@@ -244,6 +250,32 @@ async def post_init(app):
 	await start_workers(app.bot)
 
 
+async def initialize_application_with_retries(app: Application) -> None:
+	max_attempts = 3
+	for attempt in range(1, max_attempts + 1):
+		try:
+			await app.initialize()
+			return
+		except NetworkError as e:
+			if attempt == max_attempts:
+				logging.exception(
+					"[telegram-startup] Application initialization failed after %s attempts",
+					max_attempts,
+				)
+				raise
+
+			retry_delay = 2 ** (attempt - 1)
+			logging.warning(
+				"[telegram-startup] Application initialization failed "
+				"(%s/%s, %s); retrying in %ss",
+				attempt,
+				max_attempts,
+				type(e).__name__,
+				retry_delay,
+			)
+			await asyncio.sleep(retry_delay)
+
+
 def main():
 	sync_cookie_files_by_mtime()
 	init_db()
@@ -282,6 +314,7 @@ def main():
 
 	register_handlers(app)
 
+	loop.run_until_complete(initialize_application_with_retries(app))
 	logging.info("Bot started")
 	app.run_polling()
 
