@@ -131,6 +131,35 @@ class TimingTests(unittest.TestCase):
 
 		self.assertEqual(progress_updates[0]["eta_seconds"], 5)
 
+	def test_ytdlp_hook_keeps_sub_five_percent_progress_below_threshold(self):
+		logger = logging.getLogger("test.timing")
+		progress_updates = []
+
+		with patch("bot.utils.timing.LOG_TIME", False):
+			with patch(
+				"bot.utils.timing.time.perf_counter",
+				side_effect=[0, 10],
+			):
+				hook, _ = create_ytdlp_download_hook(
+					logger,
+					progress_callback=progress_updates.append,
+				)
+				hook({
+					"status": "downloading",
+					"downloaded_bytes": 49,
+					"total_bytes": 1000,
+				})
+				hook({
+					"status": "downloading",
+					"downloaded_bytes": 50,
+					"total_bytes": 1000,
+				})
+
+		self.assertEqual(
+			[progress["percent"] for progress in progress_updates],
+			[4, 5],
+		)
+
 
 if __name__ == "__main__":
 	unittest.main()

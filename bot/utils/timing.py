@@ -73,7 +73,7 @@ def create_ytdlp_download_hook(
 				and isinstance(total_bytes, int)
 				and total_bytes > 0
 			):
-				percent = min(99, round(downloaded_bytes * 100 / total_bytes))
+				percent = min(99, int(downloaded_bytes * 100 / total_bytes))
 				if last_reported_percent is not None:
 					percent = max(last_reported_percent, percent)
 

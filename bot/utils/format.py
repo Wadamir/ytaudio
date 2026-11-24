@@ -62,6 +62,22 @@ def format_eta(seconds: Optional[int | float]) -> Optional[str]:
 	return f"{minutes} min"
 
 
+def format_download_progress(
+	downloaded_size: Optional[str],
+	total_size: Optional[str],
+	percent: Optional[int],
+) -> Optional[str]:
+	if percent is None:
+		return None
+	if percent < 5 or downloaded_size is None:
+		return f"{percent}%"
+
+	amount = downloaded_size
+	if total_size is not None:
+		amount += f" / {total_size}"
+	return f"{amount} ({percent}%)"
+
+
 def fmt_int(value: Optional[float | int]) -> str:
 	if value is None:
 		return "—"

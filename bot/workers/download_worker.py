@@ -19,7 +19,12 @@ from bot.db.db import (
 )
 from bot.utils.timing import log_duration
 from bot.i18n.helpers import tr_user
-from bot.utils.format import format_duration, format_eta, format_size_bytes
+from bot.utils.format import (
+	format_download_progress,
+	format_duration,
+	format_eta,
+	format_size_bytes,
+)
 
 from bot.downloaders.base import DownloadContext
 from bot.downloaders.registry import get_downloader
@@ -152,30 +157,24 @@ async def process_job(job: Dict, bot: Bot):
 			)
 			download_percent = progress_status_data.get("download_percent")
 			download_lines = []
-			downloaded_size = progress_status_data.get("downloaded_size")
-			if downloaded_size is not None or download_percent is not None:
-				amount = (
-					str(downloaded_size)
-					if downloaded_size is not None
-					else ""
-				)
-				total_size = progress_status_data.get("total_size")
-				if total_size is not None and downloaded_size is not None:
-					amount += f" / {total_size}"
-				if download_percent is not None:
-					amount += (
-						f" ({download_percent}%)"
-						if downloaded_size is not None
-						else f"{download_percent}%"
-					)
+			progress_amount = format_download_progress(
+				progress_status_data.get("downloaded_size"),
+				progress_status_data.get("total_size"),
+				download_percent,
+			)
+			if progress_amount is not None:
 				download_text = tr_user(
 					user_id,
 					"download_progress",
-					amount=amount,
+					amount=progress_amount,
 				)
 				download_lines.append(download_text)
 			download_eta = progress_status_data.get("download_eta")
-			if download_eta is not None:
+			if (
+				download_percent is not None
+				and download_percent >= 5
+				and download_eta is not None
+			):
 				download_lines.append(
 					tr_user(user_id, "download_eta", eta=download_eta)
 				)
