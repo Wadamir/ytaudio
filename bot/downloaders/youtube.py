@@ -112,6 +112,8 @@ class YouTubeDownloader(BaseDownloader):
 			"407",
 			"socks5",
 			"malformed reply",
+			"invalid response version",
+			"expected 05 got 00",
 			"connection refused",
 			"connection reset",
 			"connection aborted",
@@ -152,6 +154,15 @@ class YouTubeDownloader(BaseDownloader):
 			host == "youtube.com"
 			or host.endswith(".youtube.com")
 			or host == "youtu.be"
+		)
+
+	@staticmethod
+	def _has_audio_format(info: Dict) -> bool:
+		formats = info.get("formats")
+		return isinstance(formats, list) and any(
+			isinstance(format_info, dict)
+			and format_info.get("acodec") not in (None, "none")
+			for format_info in formats
 		)
 	
 	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
@@ -198,9 +209,12 @@ class YouTubeDownloader(BaseDownloader):
 					opts.pop("proxy", None)
 
 				info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+				if not self._has_audio_format(info):
+					raise yt_dlp.utils.DownloadError(
+						"Only images are available for download"
+					)
 				ctx.transport_route = route.key
 				ctx.transport_proxy = route.proxy
-				mark_success(route.key)
 				route_result = "success"
 				return info
 
