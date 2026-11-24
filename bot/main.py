@@ -257,12 +257,20 @@ def main():
 		read_timeout=20.0,
 		httpx_kwargs={"trust_env": False},
 	)
+	get_updates_request_config = HTTPXRequest(
+		proxy=telegram_proxy,
+		connect_timeout=20.0,
+		read_timeout=20.0,
+		connection_pool_size=1,
+		httpx_kwargs={"trust_env": False},
+	)
 
 	# Configure the application builder lifecycle cleanly
 	builder = (
 		ApplicationBuilder()
 		.token(BOT_TOKEN)
 		.request(request_config)
+		.get_updates_request(get_updates_request_config)
 		.post_init(post_init)
 	)
 

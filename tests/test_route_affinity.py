@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from bot.db import db
 from bot.transport import state, strategy
+from bot.transport.exceptions import is_route_format_error
 from bot.transport.routes import TransportRoute
 
 
@@ -60,6 +61,19 @@ class RouteAffinityTests(unittest.TestCase):
 				[route.key for route in strategy.iter_routes()],
 				["http_secondary", "socks_primary"],
 			)
+
+	def test_missing_formats_trigger_route_fallback(self):
+		self.assertTrue(
+			is_route_format_error(
+				RuntimeError("Requested format is not available")
+			)
+		)
+		self.assertTrue(
+			is_route_format_error(
+				RuntimeError("Only images are available for download")
+			)
+		)
+		self.assertFalse(is_route_format_error(RuntimeError("Video unavailable")))
 
 
 if __name__ == "__main__":

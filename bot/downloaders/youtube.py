@@ -18,6 +18,7 @@ from bot.config.network import (
 
 from bot.transport.strategy import iter_routes
 from bot.transport.state import mark_403, mark_success
+from bot.transport.exceptions import is_route_format_error
 
 from .base import BaseDownloader, DownloadContext
 from .errors import (
@@ -174,6 +175,7 @@ class YouTubeDownloader(BaseDownloader):
 		except Exception as diag_global_err:
 			logger.error("[diag-global] Diagnostic sequence interrupted: %s", diag_global_err)
 
+		last_route_error: Exception | None = None
 		for route in iter_routes():
 			logger.info(
 				"[downloader] Trying to fetch info via route: %s (proxy=%s)",
@@ -208,6 +210,14 @@ class YouTubeDownloader(BaseDownloader):
 						route.key,
 						type(e).__name__,
 					)
+					last_route_error = e
+					continue
+				if is_route_format_error(e):
+					logger.warning(
+						"[downloader] route %s returned no usable formats; trying next route",
+						route.key,
+					)
+					last_route_error = e
 					continue
 				raise
 			except OSError as e:
@@ -218,8 +228,11 @@ class YouTubeDownloader(BaseDownloader):
 					route.key,
 					type(e).__name__,
 				)
+				last_route_error = e
 				continue
 
+		if last_route_error:
+			raise last_route_error
 		raise FetchInfoFailed("All transport routes failed")
 
 	def _pick_ua_profile(self) -> str:
@@ -395,19 +408,27 @@ class YouTubeDownloader(BaseDownloader):
 			except NoUnencryptedAudioFormat:
 				raise
 			except Exception as e:
+				format_error = is_route_format_error(e)
 				if not (
 					self._is_youtube_block_error(e)
 					or self._is_route_connection_error(e)
+					or format_error
 				):
 					raise
 
 				if self._is_youtube_block_error(e):
 					mark_403(route.key)
-				logger.warning(
-					"[downloader] download route %s failed (%s); trying next route",
-					route.key,
-					type(e).__name__,
-				)
+				if format_error:
+					logger.warning(
+						"[downloader] download route %s returned no usable formats; trying next route",
+						route.key,
+					)
+				else:
+					logger.warning(
+						"[downloader] download route %s failed (%s); trying next route",
+						route.key,
+						type(e).__name__,
+					)
 				last_route_error = e
 				self._cleanup_partial_download(plan)
 
