@@ -26,8 +26,5 @@ COPY cookies.txt /cookies.txt
 
 ENV PYTHONPATH=/app
 
-# Hardcode the global proxy routing flag for the core yt-dlp binary layer
-ENV YTDLP_PROXY="socks5h://127.0.0.1:1080"
-
 # Execute the main module of the application
 CMD ["python", "-m", "bot.main"]

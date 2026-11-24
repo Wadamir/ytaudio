@@ -1,5 +1,4 @@
 # bot/downloaders/youtube.py
-import os
 import yt_dlp # type: ignore
 import asyncio
 import logging
@@ -10,7 +9,12 @@ from typing import Dict, Literal, Optional
 from dataclasses import dataclass
 
 from bot.config.downloaders import *
-from bot.config.network import YTDLP_JS_RUNTIME_PATH
+from bot.config.network import (
+	YT_PROXY_TYPE,
+	YTDLP_JS_RUNTIME_PATH,
+	get_alternate_proxy_type,
+	get_proxy_candidates,
+)
 
 from bot.transport.strategy import iter_routes
 from bot.transport.state import mark_403, mark_success
@@ -30,6 +34,13 @@ from .utils import notify
 
 
 logger = logging.getLogger(__name__)
+
+
+def preferred_youtube_proxy() -> str | None:
+	candidates = get_proxy_candidates(YT_PROXY_TYPE)
+	if not candidates:
+		candidates = get_proxy_candidates(get_alternate_proxy_type(YT_PROXY_TYPE))
+	return candidates[0][1] if candidates else None
 
 
 yt_errors = ["youtube_403", "youtube_429", "youtube_503", "youtube_sabr"]
@@ -74,6 +85,52 @@ class DownloadPlan:
 class YouTubeDownloader(BaseDownloader):
 	name = "youtube"
 
+	@staticmethod
+	def _is_youtube_block_error(error: Exception) -> bool:
+		message = str(error).lower()
+		return any(marker in message for marker in (
+			"403",
+			"429",
+			"forbidden",
+			"too many requests",
+			"confirm you're not a bot",
+			"sign in to confirm",
+		))
+
+	@staticmethod
+	def _is_route_connection_error(error: Exception) -> bool:
+		message = str(error).lower()
+		return any(marker in message for marker in (
+			"proxyerror",
+			"proxy error",
+			"proxy authentication",
+			"407",
+			"socks5",
+			"malformed reply",
+			"connection refused",
+			"connection reset",
+			"connection aborted",
+			"connection timed out",
+			"timed out",
+			"timeout",
+			"temporary failure",
+			"name or service not known",
+			"failed to resolve",
+			"getaddrinfo failed",
+			"network is unreachable",
+			"no route to host",
+			"unable to connect",
+			"unable to establish",
+			"remote end closed connection",
+			"tunnel connection failed",
+			"sslerror",
+			"ssl:",
+			"tls",
+			"502",
+			"503",
+			"504",
+		))
+
 	def can_handle(self, url: str) -> bool:
 		from urllib.parse import urlparse
 
@@ -96,7 +153,7 @@ class YouTubeDownloader(BaseDownloader):
 		# Pre-flight diagnostic block: test host IP, proxy routing, cookies layout, and YouTube connection
 		try:
 			import httpx
-			proxy_url = os.getenv("EXTERNAL_PROXY_URL")
+			proxy_url = preferred_youtube_proxy()
 			logger.info("=== PRE-FLIGHT NETWORK & CONFIG DIAGNOSTICS ===")
 			
 			# 1. Check local VPS host external IP (without proxy)
@@ -168,18 +225,30 @@ class YouTubeDownloader(BaseDownloader):
 				return info
 
 			except yt_dlp.utils.DownloadError as e:
-				msg = str(e).lower()
-				if any(x in msg for x in (
-					"403",
-					"429",
-					"forbidden",
-					"too many requests",
-					"confirm you're not a bot",
-					"sign in to confirm",
-				)):
+				if self._is_youtube_block_error(e):
 					mark_403(route.key)
+					logger.warning(
+						"[downloader] route %s was rejected by YouTube; trying next route",
+						route.key,
+					)
+					continue
+				if self._is_route_connection_error(e):
+					logger.warning(
+						"[downloader] route %s connection failed (%s); trying next route",
+						route.key,
+						type(e).__name__,
+					)
 					continue
 				raise
+			except OSError as e:
+				if not self._is_route_connection_error(e):
+					raise
+				logger.warning(
+					"[downloader] route %s connection failed (%s); trying next route",
+					route.key,
+					type(e).__name__,
+				)
+				continue
 
 		raise FetchInfoFailed("All transport routes failed")
 
@@ -243,8 +312,8 @@ class YouTubeDownloader(BaseDownloader):
 			opts.pop("proxy", None)
 		elif ctx and ctx.transport_proxy:
 			opts["proxy"] = ctx.transport_proxy
-		else:
-			opts["proxy"] = os.getenv("EXTERNAL_PROXY_URL")
+		elif proxy_url := preferred_youtube_proxy():
+			opts["proxy"] = proxy_url
 
 		return opts
 
@@ -302,12 +371,79 @@ class YouTubeDownloader(BaseDownloader):
 					raise NoUnencryptedAudioFormat(
 						"No unencrypted audio format is available"
 					) from e
+				if self._is_youtube_block_error(e) or self._is_route_connection_error(e):
+					raise
 				last_exc = e
 				logger.warning(
 					f"[downloader] yt-dlp attempt {attempt}/{YTDLP_RETRIES} failed: {e}"
 				)
 
 		raise last_exc
+
+	@staticmethod
+	def _cleanup_partial_download(plan: DownloadPlan) -> None:
+		for path in plan.out_dir.glob(f"{plan.tmp_id}.*"):
+			if not path.is_file():
+				continue
+			try:
+				path.unlink(missing_ok=True)
+			except OSError as e:
+				logger.warning(
+					"[downloader] could not remove partial output (%s)",
+					type(e).__name__,
+				)
+
+	async def _download_with_routes(
+		self,
+		url: str,
+		plan: DownloadPlan,
+		ctx: DownloadContext,
+	) -> None:
+		routes = list(iter_routes())
+		for index, route in enumerate(routes):
+			if route.key == ctx.transport_route:
+				routes.insert(0, routes.pop(index))
+				break
+
+		if not routes:
+			raise DownloadFailed("No transport routes are available")
+
+		last_route_error: Exception | None = None
+		for route in routes:
+			ctx.transport_route = route.key
+			ctx.transport_proxy = route.proxy
+			opts = (
+				self._fast_mode_opts(plan, ctx)
+				if plan.mode == "fast_mode"
+				else self._slow_mode_opts(plan, ctx)
+			)
+
+			try:
+				await self._download_with_retry(url, opts)
+				mark_success(route.key)
+				return
+			except NoUnencryptedAudioFormat:
+				raise
+			except Exception as e:
+				if not (
+					self._is_youtube_block_error(e)
+					or self._is_route_connection_error(e)
+				):
+					raise
+
+				if self._is_youtube_block_error(e):
+					mark_403(route.key)
+				logger.warning(
+					"[downloader] download route %s failed (%s); trying next route",
+					route.key,
+					type(e).__name__,
+				)
+				last_route_error = e
+				self._cleanup_partial_download(plan)
+
+		if last_route_error:
+			raise last_route_error
+		raise DownloadFailed("All transport routes failed")
 	
 	# async def _fetch_info(self, url: str, ctx: DownloadContext) -> Dict:
 	# 	opts = self._base_opts(ctx)
@@ -386,12 +522,7 @@ class YouTubeDownloader(BaseDownloader):
 			}
 		)
 
-		# 5. yt-dlp download (with retry)
-		if plan.mode == "fast_mode":
-			opts = self._fast_mode_opts(plan, ctx)
-		else:
-			opts = self._slow_mode_opts(plan, ctx)
-		
+		# 5. yt-dlp download (preferred route, then protocol fallback)
 		try:
 			notify(ctx, DownloadStage.DOWNLOADING,
 				{
@@ -402,7 +533,7 @@ class YouTubeDownloader(BaseDownloader):
 				}   
 			)
 
-			await self._download_with_retry(url, opts)
+			await self._download_with_routes(url, plan, ctx)
 
 			files = list(plan.out_dir.glob(f"{plan.tmp_id}.*"))
 			if not files:

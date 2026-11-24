@@ -1,8 +1,18 @@
+import asyncio
 import os
 import logging
+import time
+from urllib.parse import urlsplit
+
+import httpx
 from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore
 from telegram.request import HTTPXRequest
 
+from bot.config.network import (
+	TG_PROXY_TYPE,
+	get_alternate_proxy_type,
+	get_proxy_candidates,
+)
 from bot.db.db import init_db
 from bot.i18n.validate import validate_translations
 from bot.handlers import register_handlers
@@ -23,6 +33,129 @@ logging.getLogger("telegram.ext").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
 
 
+async def probe_telegram_route(
+	route_name: str,
+	proxy_url: str | None,
+	bot_token: str | None,
+) -> tuple[str, str | None, float] | None:
+	if not bot_token:
+		logging.error("[%s] BOT_TOKEN is not configured; cannot call getMe", route_name)
+		return None
+
+	try:
+		proxy_scheme = urlsplit(proxy_url).scheme.lower() if proxy_url else ""
+	except ValueError as e:
+		logging.error(
+			"[telegram-startup] %s proxy configuration is invalid (%s)",
+			route_name,
+			type(e).__name__,
+		)
+		return None
+	protocol = (
+		"SOCKS5" if proxy_scheme.startswith("socks5")
+		else "HTTPS" if proxy_scheme.startswith("https")
+		else "HTTP" if proxy_scheme.startswith("http")
+		else "proxy"
+	)
+	request_url = f"https://api.telegram.org/bot{bot_token}/getMe"
+	started_at = time.perf_counter()
+	try:
+		async with httpx.AsyncClient(
+			proxy=proxy_url or None,
+			timeout=10.0,
+			trust_env=False,
+		) as client:
+			response = await client.get(request_url)
+	except (httpx.HTTPError, ImportError, ValueError) as e:
+		logging.error(
+			"[telegram-startup] %s connection failed (%s)",
+			route_name,
+			type(e).__name__,
+		)
+		return None
+
+	latency_ms = (time.perf_counter() - started_at) * 1000
+	connection_label = (
+		f"{route_name} {protocol} handshake/tunnel"
+		if proxy_url
+		else "direct connection"
+	)
+	logging.info(
+		"[telegram-startup] %s reached Telegram API (HTTP %s, %.0f ms)",
+		connection_label,
+		response.status_code,
+		latency_ms,
+	)
+
+	try:
+		result = response.json()
+	except ValueError:
+		logging.error(
+			"[telegram-startup] %s getMe returned invalid JSON (HTTP %s)",
+			route_name,
+			response.status_code,
+		)
+		return None
+
+	if response.is_success and isinstance(result, dict) and result.get("ok") is True:
+		user = result.get("result")
+		username = user.get("username") if isinstance(user, dict) else None
+		logging.info(
+			"[telegram-startup] %s Telegram getMe OK (bot=@%s, %.0f ms)",
+			route_name,
+			username or "unknown",
+			latency_ms,
+		)
+		return route_name, proxy_url, latency_ms
+
+	error_code = result.get("error_code") if isinstance(result, dict) else None
+	logging.error(
+		"[telegram-startup] %s Telegram getMe rejected (HTTP %s, API error=%s)",
+		route_name,
+		response.status_code,
+		error_code or "unknown",
+	)
+	return None
+
+
+async def select_telegram_proxy(bot_token: str | None) -> str | None:
+	preferred_routes = [("direct", None), *get_proxy_candidates(TG_PROXY_TYPE)]
+	fallback_routes = get_proxy_candidates(get_alternate_proxy_type(TG_PROXY_TYPE))
+	routes = [*preferred_routes, *fallback_routes]
+	results = await asyncio.gather(*(
+		probe_telegram_route(name, proxy_url, bot_token)
+		for name, proxy_url in routes
+	))
+	preferred_names = {name for name, _ in preferred_routes}
+	preferred_working = [
+		result for result in results
+		if result is not None and result[0] in preferred_names
+	]
+	fallback_working = [
+		result for result in results
+		if result is not None and result[0] not in preferred_names
+	]
+	working_routes = preferred_working or fallback_working
+
+	if not working_routes:
+		logging.error(
+			"[telegram-startup] No route passed getMe; falling back to direct"
+		)
+		return None
+
+	route_name, proxy_url, latency_ms = min(
+		working_routes,
+		key=lambda route: route[2],
+	)
+	logging.info(
+		"[telegram-startup] Selected %s for Telegram API (preferred_type=%s, %.0f ms)",
+		route_name,
+		TG_PROXY_TYPE,
+		latency_ms,
+	)
+	return proxy_url
+
+
 async def post_init(app):
 	await start_workers(app.bot)
 
@@ -31,23 +164,23 @@ def main():
 	init_db()
 	validate_translations()
 
-	# Fetch configuration variables mapping directly from hidden environment context
-	proxy_url = os.getenv("EXTERNAL_PROXY_URL")
-	request_config = None
-
-	if proxy_url:
-		# Build a native authorized request object directly passing the proxy URL string
-		request_config = HTTPXRequest(
-			proxy=proxy_url,
-			connect_timeout=20.0,
-			read_timeout=20.0
-		)
-		logging.info("Native proxy architecture verified and injected into request core.")
+	loop = asyncio.new_event_loop()
+	asyncio.set_event_loop(loop)
+	telegram_proxy = loop.run_until_complete(select_telegram_proxy(BOT_TOKEN))
+	request_config = HTTPXRequest(
+		proxy=telegram_proxy,
+		connect_timeout=20.0,
+		read_timeout=20.0,
+		httpx_kwargs={"trust_env": False},
+	)
 
 	# Configure the application builder lifecycle cleanly
-	builder = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init)
-	if request_config:
-		builder = builder.request(request_config)
+	builder = (
+		ApplicationBuilder()
+		.token(BOT_TOKEN)
+		.request(request_config)
+		.post_init(post_init)
+	)
 
 	app = builder.build()
 

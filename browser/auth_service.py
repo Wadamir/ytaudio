@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import shutil
 import socket
@@ -6,7 +7,7 @@ import threading
 import subprocess
 import time
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from aiohttp import web
 from playwright.async_api import async_playwright
@@ -16,7 +17,37 @@ AUTH_DIR = Path(os.getenv("YOUTUBE_AUTH_DIR", "/storage/auth"))
 PROFILE_DIR = AUTH_DIR / "profile"
 COOKIES_FILE = AUTH_DIR / "cookies.txt"
 INITIAL_COOKIES_FILE = Path(os.getenv("INITIAL_COOKIES_FILE", "/cookies.txt"))
-PROXY_URL = os.getenv("EXTERNAL_PROXY_URL")
+YT_PROXY_TYPE = os.getenv("YT_PROXY_TYPE", "socks5").strip().lower()
+if YT_PROXY_TYPE not in {"http", "socks5"}:
+    raise ValueError("YT_PROXY_TYPE must be one of: http, socks5")
+
+HTTP_PROXIES = (
+    os.getenv("HTTP_PROXY_PRIMARY", "").strip(),
+    os.getenv("HTTP_PROXY_SECONDARY", "").strip(),
+)
+SOCKS_PROXIES = (
+    os.getenv(
+        "SOCKS_PROXY_PRIMARY",
+        os.getenv("YT_PROXY_PRIMARY", "socks5h://ytaudio_net:1080"),
+    ).strip(),
+    os.getenv(
+        "SOCKS_PROXY_SECONDARY",
+        os.getenv("YT_PROXY_SECONDARY", "socks5h://ytaudio_net:1081"),
+    ).strip(),
+)
+PREFERRED_PROXY_TYPES = (
+    (YT_PROXY_TYPE, "socks5" if YT_PROXY_TYPE == "http" else "http")
+)
+PROXY_ENDPOINTS = {
+    "http": HTTP_PROXIES,
+    "socks5": SOCKS_PROXIES,
+}
+PROXY_ROUTES = [
+    (proxy_type, url)
+    for proxy_type in PREFERRED_PROXY_TYPES
+    for url in PROXY_ENDPOINTS[proxy_type]
+    if url
+]
 API_HOST = os.getenv("YOUTUBE_AUTH_API_HOST", "0.0.0.0")
 API_PORT = int(os.getenv("YOUTUBE_AUTH_API_PORT", "8081"))
 
@@ -77,54 +108,109 @@ def recv_exact(sock, size):
 
 def connect_via_socks(proxy_url, host, port):
     parsed = urlsplit(proxy_url)
-    upstream = socket.create_connection((parsed.hostname, parsed.port), timeout=20)
+    if parsed.scheme not in {"socks5", "socks5h"} or not parsed.hostname:
+        raise ValueError("Invalid SOCKS5 proxy URL")
 
-    upstream.sendall(b"\x05\x01\x02")
-    version, method = recv_exact(upstream, 2)
-    if version != 5:
-        raise ConnectionError("Invalid SOCKS5 response")
-
-    if method == 2:
-        username = (parsed.username or "").encode()
-        password = (parsed.password or "").encode()
-        upstream.sendall(
-            b"\x01"
-            + bytes([len(username)])
-            + username
-            + bytes([len(password)])
-            + password
-        )
-        auth_version, auth_status = recv_exact(upstream, 2)
-        if auth_version != 1 or auth_status != 0:
-            upstream.close()
-            raise ConnectionError("SOCKS5 authentication failed")
-    elif method != 0:
-        upstream.close()
-        raise ConnectionError("SOCKS5 authentication method rejected")
-
-    encoded_host = host.encode("idna")
-    request = (
-        b"\x05\x01\x00"
-        b"\x03"
-        + bytes([len(encoded_host)])
-        + encoded_host
-        + port.to_bytes(2, "big")
+    upstream = socket.create_connection(
+        (parsed.hostname, parsed.port or 1080),
+        timeout=20,
     )
-    upstream.sendall(request)
-    header = recv_exact(upstream, 4)
-    if header[1] != 0:
-        upstream.close()
-        raise ConnectionError(f"SOCKS5 connect failed: {header[1]}")
+    try:
+        upstream.sendall(b"\x05\x02\x00\x02")
+        version, method = recv_exact(upstream, 2)
+        if version != 5:
+            raise ConnectionError("Invalid SOCKS5 response")
 
-    atyp = header[3]
-    if atyp == 1:
-        recv_exact(upstream, 4)
-    elif atyp == 3:
-        recv_exact(upstream, recv_exact(upstream, 1)[0])
-    elif atyp == 4:
-        recv_exact(upstream, 16)
-    recv_exact(upstream, 2)
-    return upstream
+        if method == 2:
+            username = unquote(parsed.username or "").encode()
+            password = unquote(parsed.password or "").encode()
+            if len(username) > 255 or len(password) > 255:
+                raise ValueError("SOCKS5 credentials are too long")
+            upstream.sendall(
+                b"\x01"
+                + bytes([len(username)])
+                + username
+                + bytes([len(password)])
+                + password
+            )
+            auth_version, auth_status = recv_exact(upstream, 2)
+            if auth_version != 1 or auth_status != 0:
+                raise ConnectionError("SOCKS5 authentication failed")
+        elif method != 0:
+            raise ConnectionError("SOCKS5 authentication method rejected")
+
+        encoded_host = host.encode("idna")
+        request = (
+            b"\x05\x01\x00"
+            b"\x03"
+            + bytes([len(encoded_host)])
+            + encoded_host
+            + port.to_bytes(2, "big")
+        )
+        upstream.sendall(request)
+        header = recv_exact(upstream, 4)
+        if header[1] != 0:
+            raise ConnectionError(f"SOCKS5 connect failed: {header[1]}")
+
+        address_type = header[3]
+        if address_type == 1:
+            recv_exact(upstream, 4)
+        elif address_type == 3:
+            recv_exact(upstream, recv_exact(upstream, 1)[0])
+        elif address_type == 4:
+            recv_exact(upstream, 16)
+        else:
+            raise ConnectionError("Invalid SOCKS5 address type")
+        recv_exact(upstream, 2)
+        return upstream, b""
+    except Exception:
+        upstream.close()
+        raise
+
+
+def connect_via_http_proxy(proxy_url, host, port):
+    parsed = urlsplit(proxy_url)
+    if parsed.scheme != "http" or not parsed.hostname:
+        raise ValueError("Invalid HTTP proxy URL")
+
+    upstream = socket.create_connection(
+        (parsed.hostname, parsed.port or 80),
+        timeout=20,
+    )
+    try:
+        authority = f"{host}:{port}"
+        headers = [
+            f"CONNECT {authority} HTTP/1.1",
+            f"Host: {authority}",
+            "Proxy-Connection: Keep-Alive",
+        ]
+        if parsed.username is not None or parsed.password is not None:
+            credentials = (
+                f"{unquote(parsed.username or '')}:{unquote(parsed.password or '')}"
+            ).encode()
+            authorization = base64.b64encode(credentials).decode("ascii")
+            headers.append(f"Proxy-Authorization: Basic {authorization}")
+
+        upstream.sendall(("\r\n".join(headers) + "\r\n\r\n").encode("ascii"))
+        response = bytearray()
+        while b"\r\n\r\n" not in response:
+            chunk = upstream.recv(4096)
+            if not chunk:
+                raise ConnectionError("HTTP proxy closed before CONNECT response")
+            response.extend(chunk)
+            if len(response) > 65536:
+                raise ConnectionError("HTTP proxy response headers are too large")
+
+        header, pending_data = bytes(response).split(b"\r\n\r\n", 1)
+        status_line = header.split(b"\r\n", 1)[0].decode("ascii", "replace")
+        status_parts = status_line.split()
+        if len(status_parts) < 2 or status_parts[1] != "200":
+            status = status_parts[1] if len(status_parts) > 1 else "unknown"
+            raise ConnectionError(f"HTTP proxy CONNECT failed: {status}")
+        return upstream, pending_data
+    except Exception:
+        upstream.close()
+        raise
 
 
 def relay_sockets(left, right):
@@ -147,8 +233,8 @@ def relay_sockets(left, right):
     copy(right, left)
 
 
-def start_http_to_socks_relay():
-    if not PROXY_URL:
+def start_http_proxy_relay():
+    if not PROXY_ROUTES:
         return None
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -181,7 +267,7 @@ def handle_http_proxy_connection(client):
             if len(request_line) > 65536:
                 return
 
-        head = request_line.split(b"\r\n\r\n", 1)[0]
+        head, pending_data = request_line.split(b"\r\n\r\n", 1)
         line = head.split(b"\r\n", 1)[0].decode("ascii", "ignore")
         parts = line.split(" ")
         if len(parts) < 2 or parts[0].upper() != "CONNECT":
@@ -189,14 +275,41 @@ def handle_http_proxy_connection(client):
             return
 
         host, port_text = parts[1].rsplit(":", 1)
-        upstream = connect_via_socks(PROXY_URL, host, int(port_text))
+        port = int(port_text)
+        upstream = None
+        upstream_data = b""
+        for proxy_type, proxy_url in PROXY_ROUTES:
+            try:
+                if proxy_type == "socks5":
+                    upstream, upstream_data = connect_via_socks(
+                        proxy_url,
+                        host,
+                        port,
+                    )
+                else:
+                    upstream, upstream_data = connect_via_http_proxy(
+                        proxy_url,
+                        host,
+                        port,
+                    )
+                break
+            except (ConnectionError, OSError, ValueError):
+                continue
+
+        if upstream is None:
+            raise ConnectionError("All configured YouTube proxy routes failed")
+
         client.sendall(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+        if pending_data:
+            upstream.sendall(pending_data)
+        if upstream_data:
+            client.sendall(upstream_data)
+        client.settimeout(None)
+        upstream.settimeout(None)
         relay_sockets(client, upstream)
-    except Exception as exc:
+    except (ConnectionError, OSError, ValueError):
         try:
-            client.sendall(
-                f"HTTP/1.1 502 Bad Gateway\r\n\r\n{str(exc)[:200]}".encode()
-            )
+            client.sendall(b"HTTP/1.1 502 Bad Gateway\r\n\r\n")
         except OSError:
             pass
     finally:
@@ -207,7 +320,7 @@ def handle_http_proxy_connection(client):
 
 
 def proxy_config():
-    if not PROXY_URL:
+    if not PROXY_ROUTES:
         return None
     return {"server": "http://127.0.0.1:1081"}
 
@@ -346,8 +459,8 @@ async def main():
     await asyncio.sleep(1)
 
     playwright = await async_playwright().start()
-    if PROXY_URL:
-        start_http_to_socks_relay()
+    if PROXY_ROUTES:
+        start_http_proxy_relay()
 
     chrome_process = start_manual_chromium()
     browser = await connect_over_cdp()

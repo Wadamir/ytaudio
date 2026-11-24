@@ -2,9 +2,10 @@ from dataclasses import dataclass
 from typing import Optional
 
 from bot.config.network import (
-    YT_PROXY_PRIMARY,
-    YT_PROXY_SECONDARY,
+    YT_PROXY_TYPE,
     YT_ROUTING_MODE,
+    get_alternate_proxy_type,
+    get_proxy_candidates,
 )
 
 
@@ -14,17 +15,22 @@ class TransportRoute:
     proxy: Optional[str]
 
 DIRECT = TransportRoute("direct", None)
-SOCKS_PRIMARY = TransportRoute("socks_primary", YT_PROXY_PRIMARY)
-SOCKS_SECONDARY = TransportRoute("socks_secondary", YT_PROXY_SECONDARY)
 
-if YT_ROUTING_MODE == "proxy_only":
-    ROUTES_IN_ORDER = [
-        SOCKS_PRIMARY,
-        SOCKS_SECONDARY,
+
+def _build_routes() -> list[TransportRoute]:
+    routes = [] if YT_ROUTING_MODE == "proxy_only" else [DIRECT]
+    proxy_types = [
+        YT_PROXY_TYPE,
+        get_alternate_proxy_type(YT_PROXY_TYPE),
     ]
-else:
-    ROUTES_IN_ORDER = [
-        DIRECT,
-        SOCKS_SECONDARY,
-        SOCKS_PRIMARY,
-    ]
+
+    for proxy_type in proxy_types:
+        routes.extend(
+            TransportRoute(key, proxy)
+            for key, proxy in get_proxy_candidates(proxy_type)
+        )
+
+    return routes
+
+
+ROUTES_IN_ORDER = _build_routes()

@@ -13,11 +13,8 @@ services:
       - ytaudio_net
     environment:
       - PYTHONPATH=/app
-      # Leave proxy configurations strictly for the internal yt-dlp core architecture
+      # Preserve distinct primary/secondary proxies from .env for route selection.
       - YT_ROUTING_MODE=${YT_ROUTING_MODE:-direct_proxy}
-      - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
-      - YT_PROXY_PRIMARY=${EXTERNAL_PROXY_URL}
-      - YT_PROXY_SECONDARY=${EXTERNAL_PROXY_URL}
       - YTDLP_COOKIES_PATH=/storage/auth/cookies.txt
       - YOUTUBE_AUTH_URL=http://youtube-auth:8081
       - YOUTUBE_AUTH_NOVNC_URL=${YOUTUBE_AUTH_NOVNC_URL:-http://localhost:6080/vnc.html}
