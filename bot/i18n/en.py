@@ -14,6 +14,7 @@ TEXTS = {
 
 	"fast_mode": "⚡ Downloading audio (fast mode) Duration: {duration}...",
 	"slow_mode": "⬇️ Downloading audio (re-encoding) Duration: {duration}... Please be patient...",
+	"download_progress": "⬇️ Downloaded: {percent}%",
 
     "job_completed": "✅ Your job has been completed successfully.",
 

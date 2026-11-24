@@ -440,6 +440,15 @@ class YouTubeDownloader(BaseDownloader):
 			)
 			progress_hook, transfer_state = create_ytdlp_download_hook(
 				logger,
+				progress_callback=lambda percent: notify(
+					ctx,
+					DownloadStage.DOWNLOADING,
+					{
+						"processing_mode": plan.mode,
+						"duration_seconds": ctx.duration_seconds,
+						"download_percent": percent,
+					},
+				),
 				route=route.key,
 				mode=plan.mode,
 				video_id=ctx.video_id,

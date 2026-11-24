@@ -150,7 +150,16 @@ async def process_job(job: Dict, bot: Bot):
 				user_id,
 				f"progress_{progress_variant_index + 1}",
 			)
-			text = f"{base_text}\n\n{update_text}"
+			download_percent = progress_status_data.get("download_percent")
+			if download_percent is not None:
+				download_text = tr_user(
+					user_id,
+					"download_progress",
+					percent=download_percent,
+				)
+				text = f"{base_text}\n{download_text}\n\n{update_text}"
+			else:
+				text = f"{base_text}\n\n{update_text}"
 			if text == progress_text:
 				return
 
@@ -173,6 +182,7 @@ async def process_job(job: Dict, bot: Bot):
 				status_key="info_ready",
 				status_data={
 					"duration": format_duration(data.get("duration_seconds")),
+					"download_percent": data.get("download_percent"),
 				},
 			)
 		elif stage in {
@@ -208,9 +218,10 @@ async def process_job(job: Dict, bot: Bot):
 			video_url=url,
 		)
 
-		ctx.on_progress = lambda stage, data: asyncio.create_task(
-			handle_progress(stage, data)
-		)		
+		loop = asyncio.get_running_loop()
+		ctx.on_progress = lambda stage, data: loop.call_soon_threadsafe(
+			lambda: asyncio.create_task(handle_progress(stage, data))
+		)
 
 		# notify user
 		try:

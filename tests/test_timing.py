@@ -58,6 +58,47 @@ class TimingTests(unittest.TestCase):
 			r"average_bytes_per_second=\d+",
 		)
 
+	def test_ytdlp_hook_reports_download_percent_with_throttling(self):
+		logger = logging.getLogger("test.timing")
+		percentages = []
+
+		with patch("bot.utils.timing.LOG_TIME", False):
+			with patch(
+				"bot.utils.timing.time.perf_counter",
+				side_effect=[0, 1, 9, 10, 11],
+			):
+				hook, _ = create_ytdlp_download_hook(
+					logger,
+					progress_callback=percentages.append,
+				)
+				hook({
+					"status": "downloading",
+					"downloaded_bytes": 10,
+					"total_bytes": 100,
+				})
+				hook({
+					"status": "downloading",
+					"downloaded_bytes": 12,
+					"total_bytes": 100,
+				})
+				hook({
+					"status": "downloading",
+					"downloaded_bytes": 15,
+					"total_bytes": 100,
+				})
+				hook({
+					"status": "downloading",
+					"downloaded_bytes": 15,
+					"total_bytes": 100,
+				})
+				hook({
+					"status": "finished",
+					"downloaded_bytes": 100,
+					"total_bytes": 100,
+				})
+
+		self.assertEqual(percentages, [10, 15, 100])
+
 
 if __name__ == "__main__":
 	unittest.main()
