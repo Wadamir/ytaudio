@@ -4,6 +4,7 @@ from telegram.ext import ContextTypes # type: ignore
 
 # from typing import Optional
 from bot.config.app import ADMIN_USER_ID
+from bot.keyboards.main import get_main_keyboard_for_context
 
 logger = logging.getLogger(__name__)
 
@@ -35,4 +36,8 @@ async def system_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text,
         parse_mode="HTML",
         disable_web_page_preview=True,
+        reply_markup=get_main_keyboard_for_context(
+            update.effective_user.id,
+            context,
+        ),
     )

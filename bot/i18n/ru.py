@@ -16,6 +16,11 @@ TEXTS = {
 	"slow_mode": "⬇️ Загрузка аудио (перекодирование)\n⏱ Длительность: {duration}…\nПожалуйста, подождите...",  
 	"download_progress": "⬇️ Скачано: {amount}",
 	"download_eta": "⏳ Примерно осталось: {eta}",
+	"btn_admin_mode": "🛠 Администратор",
+	"btn_user_mode": "👤 Пользователь",
+	"admin_mode_enabled": "🛠 Режим администратора включён.",
+	"user_mode_enabled": "👤 Режим пользователя включён.",
+	"main_keyboard_ready": "Меню обновлено.",
 
     "job_completed": "✅ Ваша задача успешно выполнена.",
 

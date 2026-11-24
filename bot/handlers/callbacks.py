@@ -6,7 +6,7 @@ from telegram.ext import ContextTypes # type: ignore
 from bot.db.db import set_user_language
 from bot.i18n.helpers import tr, tr_user
 from bot.i18n.service import is_supported_lang
-from bot.keyboards.main import get_main_keyboard
+from bot.keyboards.main import get_main_keyboard_for_context
 from bot.browser_auth import browser_auth_status, export_browser_cookies
 from bot.config.app import ADMIN_USER_ID
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -31,7 +31,7 @@ async def language_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	
 	await query.message.reply_text(
 		tr_user(query.from_user.id, "after_language_set"),
-		reply_markup=get_main_keyboard(query.from_user.id)
+		reply_markup=get_main_keyboard_for_context(query.from_user.id, context)
 	)
 	
 

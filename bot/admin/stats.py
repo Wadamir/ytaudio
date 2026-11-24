@@ -34,6 +34,7 @@ from bot.db.db import (
 )
 from bot.utils.format import fmt_int
 from bot.utils.time import time_ago_from_iso
+from bot.keyboards.main import get_main_keyboard_for_context
 
 LABELS = {
 	"telegram": "Telegram",
@@ -311,6 +312,10 @@ async def stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		text,
 		parse_mode="HTML",
 		disable_web_page_preview=True,
+		reply_markup=get_main_keyboard_for_context(
+			update.effective_user.id,
+			context,
+		),
 	)
 	
 
@@ -327,6 +332,10 @@ async def users_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 		text,
 		parse_mode="HTML",
 		disable_web_page_preview=True,
+		reply_markup=get_main_keyboard_for_context(
+			update.effective_user.id,
+			context,
+		),
 	)
 	
 async def downloads_stats_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -342,4 +351,8 @@ async def downloads_stats_handler(update: Update, context: ContextTypes.DEFAULT_
 		text,
 		parse_mode="HTML",
 		disable_web_page_preview=True,
+		reply_markup=get_main_keyboard_for_context(
+			update.effective_user.id,
+			context,
+		),
 	)

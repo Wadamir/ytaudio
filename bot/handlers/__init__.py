@@ -9,7 +9,7 @@ from telegram.ext import ( # type: ignore
 
 from .commands import start_handler, auth_youtube_handler
 from .callbacks import language_callback, donate_callback, auth_browser_callback
-from .messages import handle_message
+from .messages import handle_message, ensure_admin_keyboard_visible
 from .payments import precheckout_handler, successful_payment_handler
 # from bot.admin.stats import stats_handler
 
@@ -19,6 +19,10 @@ def register_handlers(app: Application):
 	# 0 — commands
 	app.add_handler(CommandHandler("start", start_handler), group=0)
 	app.add_handler(CommandHandler("auth_youtube", auth_youtube_handler), group=0)
+	app.add_handler(
+		MessageHandler(filters.COMMAND, ensure_admin_keyboard_visible),
+		group=0,
+	)
 
 	# 1 — callbacks
 	app.add_handler(CallbackQueryHandler(language_callback, pattern="^lang_"), group=1)
@@ -31,3 +35,7 @@ def register_handlers(app: Application):
 
 	# 3 — messages
 	app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message), group=3)
+	app.add_handler(
+		MessageHandler(~filters.TEXT, ensure_admin_keyboard_visible),
+		group=4,
+	)

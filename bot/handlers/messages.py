@@ -10,7 +10,9 @@ from bot.db.db import (
 	get_user_language,
 	set_user_language,
 )
+from bot.config.app import ADMIN_USER_ID
 from bot.i18n.helpers import tr_user
+from bot.keyboards.main import get_main_keyboard_for_context
 from bot.utils.time import time_until_utc_reset
 from bot.workers.queue import download_queue
 from bot.downloaders.registry import is_supported_url
@@ -19,6 +21,22 @@ from bot.utils.inflight import canonical_inflight_key, mark_inflight, clear_infl
 from bot.utils.urls import is_youtube_post_url
 
 logger = logging.getLogger(__name__)
+
+
+async def ensure_admin_keyboard_visible(
+	update: Update,
+	context: ContextTypes.DEFAULT_TYPE,
+):
+	user = update.effective_user
+	message = update.effective_message
+	if not user or user.id != ADMIN_USER_ID or not message:
+		return
+
+	await message.reply_text(
+		tr_user(user.id, "main_keyboard_ready"),
+		reply_markup=get_main_keyboard_for_context(user.id, context),
+	)
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	if not update.message or not update.message.text:
@@ -31,6 +49,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	register_user(user)
 
 	lang = get_user_language(user.id)
+	reply_markup = get_main_keyboard_for_context(user.id, context)
 	
 	if not lang:
 		set_user_language(user.id, 'en')
@@ -48,13 +67,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 	if is_youtube_post_url(url):
 		await message.reply_text(
-			tr_user(user.id, "youtube_post_not_video")
+			tr_user(user.id, "youtube_post_not_video"),
+			reply_markup=reply_markup,
 		)
 		return
 
 	if not is_supported_url(url):
 		await message.reply_text(
-			tr_user(user.id, "unsupported_platform")
+			tr_user(user.id, "unsupported_platform"),
+			reply_markup=reply_markup,
 		)
 		return
 
@@ -64,6 +85,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		# send "queued" message
 		status_msg = await message.reply_text(
 			tr_user(user.id, "queue"),
+			reply_markup=reply_markup,
 		)
 		created_inflight = await mark_inflight(
 			user.id,
@@ -106,7 +128,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	except Exception as e:
 		logger.error("Failed to enqueue download job: %s", e)
 		await message.reply_text(
-			tr_user(user.id, "failed_worker")
+			tr_user(user.id, "failed_worker"),
+			reply_markup=reply_markup,
 		)
 		clear_download_reservation(user.id, url)
 		await clear_inflight(user.id, inflight_key)

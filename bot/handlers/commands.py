@@ -9,10 +9,11 @@ from bot.db.db import (
 	is_supporter,
 )
 from bot.i18n.helpers import tr, tr_user
-from bot.i18n.keyboards import language_keyboard, user_reply_keyboard, donate_keyboard
+from bot.i18n.keyboards import language_keyboard, donate_keyboard
 
 from bot.utils.time import time_until_utc_reset
 from bot.config.app import ADMIN_USER_ID
+from bot.keyboards.main import get_main_keyboard, get_main_keyboard_for_context
 from bot.browser_auth import browser_auth_status
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -27,13 +28,17 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		text = tr_user(user.id, "start_welcome_new")
 		await update.message.reply_text(
 			text,
-			reply_markup=language_keyboard()
+			reply_markup=(
+				get_main_keyboard(user.id)
+				if user.id == ADMIN_USER_ID
+				else language_keyboard()
+			)
 		)
 	else:
 		text = tr_user(user.id, "start_welcome_back")
 		await update.message.reply_text(
 			text,
-			reply_markup=user_reply_keyboard(user.id)
+			reply_markup=get_main_keyboard_for_context(user.id, context)
 		)
 
 
@@ -66,6 +71,7 @@ async def plan_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		text,
 		parse_mode="HTML",
 		disable_web_page_preview=True,
+		reply_markup=get_main_keyboard_for_context(user.id, context),
 	)
 
 
@@ -79,6 +85,7 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		text,
 		parse_mode="HTML",
 		disable_web_page_preview=True,
+		reply_markup=get_main_keyboard_for_context(user.id, context),
 	)
 
 
@@ -88,8 +95,13 @@ async def donate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	
 	await update.message.reply_text(
 		tr_user(user.id, "donate_prompt"),
-		reply_markup=donate_keyboard(user.id)
+		reply_markup=donate_keyboard(user.id),
 	)
+	if user.id == ADMIN_USER_ID:
+		await update.message.reply_text(
+			tr_user(user.id, "main_keyboard_ready"),
+			reply_markup=get_main_keyboard_for_context(user.id, context),
+		)
 
 
 async def auth_youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -101,7 +113,8 @@ async def auth_youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 		status = await browser_auth_status()
 	except Exception as exc:
 		await update.message.reply_text(
-			f"Browser auth service unavailable: {str(exc)[:200]}"
+			f"Browser auth service unavailable: {str(exc)[:200]}",
+			reply_markup=get_main_keyboard_for_context(user.id, context),
 		)
 		return
 
@@ -136,4 +149,8 @@ async def auth_youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 		parse_mode="HTML",
 		reply_markup=keyboard,
 		disable_web_page_preview=True,
+	)
+	await update.message.reply_text(
+		tr_user(user.id, "main_keyboard_ready"),
+		reply_markup=get_main_keyboard_for_context(user.id, context),
 	)

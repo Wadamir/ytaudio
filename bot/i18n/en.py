@@ -16,6 +16,11 @@ TEXTS = {
 	"slow_mode": "⬇️ Downloading audio (re-encoding) Duration: {duration}... Please be patient...",
 	"download_progress": "⬇️ Downloaded: {amount}",
 	"download_eta": "⏳ Estimated time remaining: {eta}",
+	"btn_admin_mode": "🛠 Administrator",
+	"btn_user_mode": "👤 User",
+	"admin_mode_enabled": "🛠 Administrator mode enabled.",
+	"user_mode_enabled": "👤 User mode enabled.",
+	"main_keyboard_ready": "Menu updated.",
 
     "job_completed": "✅ Your job has been completed successfully.",
 

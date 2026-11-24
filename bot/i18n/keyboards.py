@@ -26,18 +26,26 @@ def language_keyboard() -> InlineKeyboardMarkup:
 
 	return InlineKeyboardMarkup(buttons)
 
-def user_reply_keyboard(user_id: int) -> ReplyKeyboardMarkup:
-	return ReplyKeyboardMarkup(
+def user_reply_keyboard(
+	user_id: int,
+	*,
+	include_admin_button: bool = False,
+) -> ReplyKeyboardMarkup:
+	rows = [
 		[
-			[
-				KeyboardButton(tr_user(user_id, "btn_language")),
-				KeyboardButton(tr_user(user_id, "btn_plan")),
-			],
-			[
-				KeyboardButton(tr_user(user_id, "btn_donate")),
-				KeyboardButton(tr_user(user_id, "btn_help")),
-			],
+			KeyboardButton(tr_user(user_id, "btn_language")),
+			KeyboardButton(tr_user(user_id, "btn_plan")),
 		],
+		[
+			KeyboardButton(tr_user(user_id, "btn_donate")),
+			KeyboardButton(tr_user(user_id, "btn_help")),
+		],
+	]
+	if include_admin_button:
+		rows.append([KeyboardButton(tr_user(user_id, "btn_admin_mode"))])
+
+	return ReplyKeyboardMarkup(
+		rows,
 		resize_keyboard=True,
 	)
 
