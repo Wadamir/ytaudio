@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
+from socksio.exceptions import SOCKSError
 from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore
 from telegram.request import HTTPXRequest
 
@@ -115,7 +116,7 @@ async def probe_telegram_route(
 			trust_env=False,
 		) as client:
 			response = await client.get(request_url)
-	except (httpx.HTTPError, ImportError, ValueError) as e:
+	except (httpx.HTTPError, SOCKSError, ImportError, ValueError) as e:
 		logging.error(
 			"[telegram-startup] %s connection failed (%s)",
 			route_name,
@@ -253,8 +254,10 @@ def main():
 	telegram_proxy = loop.run_until_complete(select_telegram_proxy(BOT_TOKEN))
 	request_config = HTTPXRequest(
 		proxy=telegram_proxy,
+		connection_pool_size=8,
 		connect_timeout=20.0,
 		read_timeout=60.0,
+		pool_timeout=20.0,
 		media_write_timeout=180.0,
 		httpx_kwargs={"trust_env": False},
 	)
