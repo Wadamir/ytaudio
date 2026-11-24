@@ -1,6 +1,7 @@
 # bot/workers/download_worker.py
 import asyncio
 import logging
+import time
 
 from typing import Iterable
 
@@ -16,6 +17,7 @@ from bot.db.db import (
 	log_youtube_error,
 	clear_download_reservation,
 )
+from bot.utils.timing import log_duration
 from bot.i18n.helpers import tr_user
 from bot.utils.format import format_duration
 
@@ -30,6 +32,7 @@ from bot.downloaders.errors import (
 	DownloadFailed,
 	FetchInfoFailed,
 	NoUnencryptedAudioFormat,
+	YouTubeAuthRequired,
 )
 
 from bot.pipeline.delivery import deliver
@@ -104,7 +107,7 @@ async def process_job(job: Dict, bot: Bot):
 	logger.info("[worker] received job")
 
 	ctx: DownloadContext | None = None
-	start_ts = asyncio.get_event_loop().time()
+	start_ts = time.perf_counter()
 	inflight_key: str | None = None
 
 
@@ -229,9 +232,48 @@ async def process_job(job: Dict, bot: Bot):
 			return
 
 		try:
-			await downloader.download(url, ctx)
-			await postprocess(ctx)
-			await deliver(ctx, bot, chat_id)
+			download_started_at = time.perf_counter()
+			download_result = "error"
+			try:
+				await downloader.download(url, ctx)
+				download_result = "success"
+			finally:
+				log_duration(
+					logger,
+					"downloader_total",
+					download_started_at,
+					video_id=ctx.video_id,
+					result=download_result,
+				)
+
+			postprocess_started_at = time.perf_counter()
+			postprocess_result = "error"
+			try:
+				await postprocess(ctx)
+				postprocess_result = "success"
+			finally:
+				log_duration(
+					logger,
+					"postprocess",
+					postprocess_started_at,
+					video_id=ctx.video_id,
+					result=postprocess_result,
+				)
+
+			delivery_started_at = time.perf_counter()
+			delivery_result = "error"
+			try:
+				await deliver(ctx, bot, chat_id)
+				delivery_result = "success"
+			finally:
+				log_duration(
+					logger,
+					"telegram_delivery",
+					delivery_started_at,
+					video_id=ctx.video_id,
+					method=ctx.delivery_method,
+					result=delivery_result,
+				)
 			
 			ctx.status = "success"
 
@@ -295,10 +337,14 @@ async def process_job(job: Dict, bot: Bot):
 			ctx.status = "failed"
 			ctx.fallback_reason = "info_unavailable"
 			ctx.error_message = str(e)
-			try:
-				await notify_admin_auth_required(bot)
-			except Exception as alert_exc:
-				logger.warning("[worker] failed to notify admin about browser auth: %s", alert_exc)
+			if isinstance(e, YouTubeAuthRequired):
+				try:
+					await notify_admin_auth_required(bot)
+				except Exception as alert_exc:
+					logger.warning(
+						"[worker] failed to notify admin about browser auth: %s",
+						alert_exc,
+					)
 
 			# log_youtube_error(
 			# 	error_type="fetch_info",
@@ -421,8 +467,14 @@ async def process_job(job: Dict, bot: Bot):
 				pass
 
 		try:
-			ctx.processing_time_ms = int(
-				(asyncio.get_event_loop().time() - start_ts) * 1000
+			ctx.processing_time_ms = int((time.perf_counter() - start_ts) * 1000)
+			log_duration(
+				logger,
+				"job_total",
+				start_ts,
+				user_id=ctx.user_id,
+				video_id=ctx.video_id,
+				result=ctx.status,
 			)
 			try:
 				log_download(**build_log_payload(ctx))

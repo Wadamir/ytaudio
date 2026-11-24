@@ -3,6 +3,7 @@ import yt_dlp # type: ignore
 import asyncio
 import logging
 import random
+import time
 
 from pathlib import Path
 from typing import Dict, Literal, Optional
@@ -19,6 +20,7 @@ from bot.config.network import (
 from bot.transport.strategy import iter_routes
 from bot.transport.state import mark_403, mark_success
 from bot.transport.exceptions import is_route_format_error
+from bot.utils.timing import create_ytdlp_download_hook, log_duration
 
 from .base import BaseDownloader, DownloadContext
 from .errors import (
@@ -29,6 +31,8 @@ from .errors import (
 	DownloadFailed,
 	FetchInfoFailed,
 	NoUnencryptedAudioFormat,
+	YouTubeAuthRequired,
+	is_browser_auth_required,
 )
 from .stages import DownloadStage
 from .utils import notify
@@ -176,12 +180,15 @@ class YouTubeDownloader(BaseDownloader):
 			logger.error("[diag-global] Diagnostic sequence interrupted: %s", diag_global_err)
 
 		last_route_error: Exception | None = None
+		last_auth_error: Exception | None = None
 		for route in iter_routes():
 			logger.info(
 				"[downloader] Trying to fetch info via route: %s (proxy=%s)",
 				route.key,
 				"yes" if route.proxy else "no",
 			)
+			route_started_at = time.perf_counter()
+			route_result = "error"
 			try:
 				opts = self._base_opts(ctx)
 
@@ -194,9 +201,12 @@ class YouTubeDownloader(BaseDownloader):
 				ctx.transport_route = route.key
 				ctx.transport_proxy = route.proxy
 				mark_success(route.key)
+				route_result = "success"
 				return info
 
 			except yt_dlp.utils.DownloadError as e:
+				if is_browser_auth_required(e):
+					last_auth_error = e
 				if self._is_youtube_block_error(e):
 					mark_403(route.key)
 					logger.warning(
@@ -230,7 +240,19 @@ class YouTubeDownloader(BaseDownloader):
 				)
 				last_route_error = e
 				continue
+			finally:
+				log_duration(
+					logger,
+					"youtube_info_route",
+					route_started_at,
+					route=route.key,
+					result=route_result,
+				)
 
+		if last_auth_error:
+			raise YouTubeAuthRequired(
+				f"YouTube requires browser authorization: {last_auth_error}"
+			) from last_auth_error
 		if last_route_error:
 			raise last_route_error
 		raise FetchInfoFailed("All transport routes failed")
@@ -395,15 +417,25 @@ class YouTubeDownloader(BaseDownloader):
 		for route in routes:
 			ctx.transport_route = route.key
 			ctx.transport_proxy = route.proxy
+			route_started_at = time.perf_counter()
+			route_result = "error"
 			opts = (
 				self._fast_mode_opts(plan, ctx)
 				if plan.mode == "fast_mode"
 				else self._slow_mode_opts(plan, ctx)
 			)
+			progress_hook, transfer_state = create_ytdlp_download_hook(
+				logger,
+				route=route.key,
+				mode=plan.mode,
+				video_id=ctx.video_id,
+			)
+			opts.setdefault("progress_hooks", []).append(progress_hook)
 
 			try:
 				await self._download_with_retry(url, opts)
 				mark_success(route.key)
+				route_result = "success"
 				return
 			except NoUnencryptedAudioFormat:
 				raise
@@ -431,6 +463,30 @@ class YouTubeDownloader(BaseDownloader):
 					)
 				last_route_error = e
 				self._cleanup_partial_download(plan)
+			finally:
+				transfer_finished_at = transfer_state.get("finished_at")
+				if (
+					plan.mode == "slow_mode"
+					and isinstance(transfer_finished_at, (int, float))
+					and route_result == "success"
+				):
+					log_duration(
+						logger,
+						"youtube_transcode",
+						transfer_finished_at,
+						route=route.key,
+						mode=plan.mode,
+						video_id=ctx.video_id,
+					)
+				log_duration(
+					logger,
+					"youtube_download_route",
+					route_started_at,
+					route=route.key,
+					mode=plan.mode,
+					video_id=ctx.video_id,
+					result=route_result,
+				)
 
 		if last_route_error:
 			raise last_route_error
@@ -449,21 +505,28 @@ class YouTubeDownloader(BaseDownloader):
 		notify(ctx, DownloadStage.FETCHING_INFO)
 
 		# 1. Get info
+		info_started_at = time.perf_counter()
 		try:
 			# info = await self._fetch_info(url, ctx)		
 			# new with strategy
 			info = await asyncio.to_thread(
 				lambda: self._extract_info_with_strategy(url, ctx)
 			)
-
 		except FetchInfoFailed:
 			raise
-
 		except Exception as e:
 			if "unavailable" in str(e).lower() or "not available" in str(e).lower():
 				raise VideoUnavailable(f"Video is unavailable: {e}") from e
 			else:
 				raise FetchInfoFailed(f"Failed to get video info: {e}") from e
+		finally:
+			log_duration(
+				logger,
+				"youtube_info",
+				info_started_at,
+				video_id=ctx.video_id,
+				route=ctx.transport_route,
+			)
 		
 		# 2. Validation (live / duration / unavailable)
 		if info.get("is_live"):
@@ -524,7 +587,18 @@ class YouTubeDownloader(BaseDownloader):
 				}   
 			)
 
-			await self._download_with_routes(url, plan, ctx)
+			download_started_at = time.perf_counter()
+			try:
+				await self._download_with_routes(url, plan, ctx)
+			finally:
+				log_duration(
+					logger,
+					"youtube_download",
+					download_started_at,
+					video_id=ctx.video_id,
+					mode=plan.mode,
+					route=ctx.transport_route,
+				)
 
 			files = list(plan.out_dir.glob(f"{plan.tmp_id}.*"))
 			if not files:

@@ -16,6 +16,7 @@ from bot.workers.queue import download_queue
 from bot.downloaders.registry import is_supported_url
 from bot.handlers.menu import handle_menu
 from bot.utils.inflight import canonical_inflight_key, mark_inflight, clear_inflight
+from bot.utils.urls import is_youtube_post_url
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 	url = message.text.strip()
+
+	if is_youtube_post_url(url):
+		await message.reply_text(
+			tr_user(user.id, "youtube_post_not_video")
+		)
+		return
 
 	if not is_supported_url(url):
 		await message.reply_text(

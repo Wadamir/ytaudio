@@ -18,6 +18,21 @@ class FetchInfoFailed(DownloaderError):
     pass
 
 
+class YouTubeAuthRequired(FetchInfoFailed):
+    """YouTube explicitly requires browser authorization."""
+    pass
+
+
+def is_browser_auth_required(error: Exception) -> bool:
+	message = str(error).lower()
+	return any(marker in message for marker in (
+		"sign in to confirm",
+		"confirm you're not a bot",
+		"login required",
+		"authentication required",
+	))
+
+
 class VideoUnavailable(DownloaderError):
 	"""Video exists but is unavailable (private, deleted, region blocked)."""
 	pass

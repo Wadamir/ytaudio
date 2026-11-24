@@ -19,6 +19,7 @@ TEXTS = {
 
 
     "unsupported_platform": "❌ Please send a valid link.",
+    "youtube_post_not_video": "❌ This is a YouTube post link, not a video. Please check the link and send a video URL.",
     "already_inflight": "⏳ This video is already being processed. I won't start a duplicate; I'll post the result here when it's done.",
 
     "progress_1": "Still fetching audio — bits don't download themselves. 🎧",
