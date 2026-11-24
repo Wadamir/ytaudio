@@ -206,6 +206,14 @@ def init_db():
 			)
 		""")
 
+		conn.execute("""
+			CREATE TABLE IF NOT EXISTS network_route_preferences (
+				service TEXT PRIMARY KEY CHECK (service IN ('telegram', 'youtube')),
+				route_key TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)
+		""")
+
 		# --- Indexes ---
 		conn.execute("""
 			CREATE INDEX IF NOT EXISTS idx_youtube_errors_type_date
@@ -284,6 +292,35 @@ def init_db():
 		
 		# Seed plans
 		seed_plans(conn)
+
+
+def get_last_successful_route(service: str) -> Optional[str]:
+	if service not in {"telegram", "youtube"}:
+		raise ValueError("service must be one of: telegram, youtube")
+
+	with get_conn() as conn:
+		row = conn.execute(
+			"SELECT route_key FROM network_route_preferences WHERE service = ?",
+			(service,),
+		).fetchone()
+		return row[0] if row else None
+
+
+def set_last_successful_route(service: str, route_key: str) -> None:
+	if service not in {"telegram", "youtube"}:
+		raise ValueError("service must be one of: telegram, youtube")
+	if not route_key:
+		raise ValueError("route_key must not be empty")
+
+	with get_conn() as conn:
+		conn.execute("""
+			INSERT INTO network_route_preferences (service, route_key, updated_at)
+			VALUES (?, ?, ?)
+			ON CONFLICT(service) DO UPDATE SET
+				route_key = excluded.route_key,
+				updated_at = excluded.updated_at
+		""", (service, route_key, utc_now_iso()))
+		conn.commit()
 
 
 

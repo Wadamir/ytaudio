@@ -18,7 +18,11 @@ from bot.config.network import (
 	get_alternate_proxy_type,
 	get_proxy_candidates,
 )
-from bot.db.db import init_db
+from bot.db.db import (
+	get_last_successful_route,
+	init_db,
+	set_last_successful_route,
+)
 from bot.i18n.validate import validate_translations
 from bot.handlers import register_handlers
 from bot.workers.queue import start_workers
@@ -167,6 +171,39 @@ async def select_telegram_proxy(bot_token: str | None) -> str | None:
 	preferred_routes = [("direct", None), *get_proxy_candidates(TG_PROXY_TYPE)]
 	fallback_routes = get_proxy_candidates(get_alternate_proxy_type(TG_PROXY_TYPE))
 	routes = [*preferred_routes, *fallback_routes]
+
+	last_successful_route = get_last_successful_route("telegram")
+	if last_successful_route:
+		saved_route = next(
+			(route for route in routes if route[0] == last_successful_route),
+			None,
+		)
+		if saved_route:
+			logging.info(
+				"[telegram-startup] Trying last successful route %s",
+				last_successful_route,
+			)
+			result = await probe_telegram_route(
+				saved_route[0],
+				saved_route[1],
+				bot_token,
+			)
+			if result:
+				logging.info(
+					"[telegram-startup] Reusing last successful route %s",
+					last_successful_route,
+				)
+				return result[1]
+			logging.warning(
+				"[telegram-startup] Last successful route %s failed; rechecking all routes",
+				last_successful_route,
+			)
+		else:
+			logging.info(
+				"[telegram-startup] Saved route %s is no longer configured; checking all routes",
+				last_successful_route,
+			)
+
 	results = await asyncio.gather(*(
 		probe_telegram_route(name, proxy_url, bot_token)
 		for name, proxy_url in routes
@@ -192,6 +229,7 @@ async def select_telegram_proxy(bot_token: str | None) -> str | None:
 		working_routes,
 		key=lambda route: route[2],
 	)
+	set_last_successful_route("telegram", route_name)
 	logging.info(
 		"[telegram-startup] Selected %s for Telegram API (preferred_type=%s, %.0f ms)",
 		route_name,

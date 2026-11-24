@@ -210,6 +210,11 @@ copy. Its proxy
 connections use the configured `YT_PROXY_TYPE` preference and fall back to the
 other configured proxy type.
 
+The bot stores the last successful Telegram and YouTube yt-dlp routes in its
+SQLite database and tries each saved route first. If that route fails, it
+checks the configured routes and saves the next successful one. Keep
+`RESET_DB_ON_START` set to `false` to retain route preferences across restarts.
+
 ### YouTube PO Token provider
 
 Both Compose configurations run the `bgutil-ytdlp-pot-provider` service on the

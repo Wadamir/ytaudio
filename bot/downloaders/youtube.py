@@ -150,56 +150,26 @@ class YouTubeDownloader(BaseDownloader):
 		)
 	
 	def _extract_info_with_strategy(self, url: str, ctx: DownloadContext):
-		# Pre-flight diagnostic block: test host IP, proxy routing, cookies layout, and YouTube connection
+		# Validate local cookie configuration before trying the persisted route.
 		try:
-			import httpx
-			proxy_url = preferred_youtube_proxy()
-			logger.info("=== PRE-FLIGHT NETWORK & CONFIG DIAGNOSTICS ===")
-			
-			# 1. Check local VPS host external IP (without proxy)
-			try:
-				with httpx.Client(timeout=3.0) as client:
-					vps_ip = client.get("https://icanhazip.com").text.strip()
-					logger.info("[diag-1/4] Local VPS Host External IP: %s", vps_ip)
-			except Exception as e:
-				logger.warning("[diag-1/4] Could not resolve local VPS Host IP: %s", e)
-			
-			# 2. Check external proxy exit node IP
-			try:
-				with httpx.Client(proxy=proxy_url, timeout=4.0) as client:
-					proxy_ip = client.get("https://icanhazip.com").text.strip()
-					logger.info("[diag-2/4] Verified External Proxy Exit IP: %s", proxy_ip)
-			except Exception as e:
-				logger.error("[diag-2/4] Proxy routing failed (check credentials/status): %s", e)
+			logger.info("=== PRE-FLIGHT COOKIE CONFIG DIAGNOSTICS ===")
 
-			# 3. Check cookies.txt file layout and existence inside the container environment
 			try:
 				cookie_file = YTDLP_COOKIES_PATH
 				if not cookie_file.exists():
-					logger.error("[diag-3/4] Active cookies file is missing at %s", cookie_file)
+					logger.error("[diag] Active cookies file is missing at %s", cookie_file)
 				elif cookie_file.stat().st_size == 0:
-					logger.error("[diag-3/4] Active cookies file is empty")
+					logger.error("[diag] Active cookies file is empty")
 				else:
 					with open(cookie_file, "r") as f:
 						first_line = f.readline().strip()
 					if "netscape" in first_line.lower() or "cookie" in first_line.lower():
-						logger.info("[diag-3/4] cookies.txt layout verified successfully (Netscape format detected)")
+						logger.info("[diag] cookies.txt layout verified successfully (Netscape format detected)")
 					else:
-						logger.warning("[diag-3/4] Active cookies file lacks a Netscape header")
+						logger.warning("[diag] Active cookies file lacks a Netscape header")
 			except Exception as e:
-				logger.error("[diag-3/4] Failed to read or parse cookies.txt file mapping layout: %s", e)
+				logger.error("[diag] Failed to read or parse cookies.txt file mapping layout: %s", e)
 
-			# 4. Test authenticated YouTube connection attempt via proxy
-			try:
-				opts = self._base_opts(ctx)
-				opts["proxy"] = proxy_url
-				logger.info("[diag-4/4] Attempting verified YouTube connection handshake...")
-				
-				test_info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
-				logger.info("[diag-4/4] YouTube connection handshake SUCCESSFUL (Title: %s)", test_info.get("title"))
-			except Exception as e:
-				logger.error("[diag-4/4] YouTube connection attempt REJECTED (Cookies expired or IP blocked): %s", e)
-				
 			logger.info("==============================================")
 		except Exception as diag_global_err:
 			logger.error("[diag-global] Diagnostic sequence interrupted: %s", diag_global_err)

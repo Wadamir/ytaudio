@@ -8,6 +8,7 @@ from bot.config.network import (
 	YT_IP_403_COOLDOWN_MIN,
 	YT_IP_403_COOLDOWN_MAX,
 )
+from bot.db.db import set_last_successful_route
 
 logger = logging.getLogger(__name__)
 
@@ -42,4 +43,5 @@ def mark_success(route_key: str):
 		"errors_403": 0,
 		"blocked_until": 0,
 	}
+	set_last_successful_route("youtube", route_key)
 
