@@ -2,12 +2,17 @@ import asyncio
 import os
 import logging
 import time
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
 from telegram.ext import ApplicationBuilder, MessageHandler, filters # type: ignore
 from telegram.request import HTTPXRequest
 
+from bot.config.downloaders import (
+	YTDLP_COOKIES_PATH,
+	YTDLP_INITIAL_COOKIES_PATH,
+)
 from bot.config.network import (
 	TG_PROXY_TYPE,
 	get_alternate_proxy_type,
@@ -31,6 +36,46 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 logging.getLogger("telegram.ext").setLevel(logging.WARNING)
 logging.getLogger("asyncio").setLevel(logging.WARNING)
+
+
+def _copy_cookie_file(source: Path, destination: Path, *, atomic: bool) -> None:
+	destination.parent.mkdir(parents=True, exist_ok=True)
+	if atomic:
+		tmp_path = destination.with_name(f"{destination.name}.startup.tmp")
+		tmp_path.write_bytes(source.read_bytes())
+		os.chmod(tmp_path, 0o600)
+		os.replace(tmp_path, destination)
+	else:
+		destination.write_bytes(source.read_bytes())
+	os.chmod(destination, 0o600)
+
+
+def sync_cookie_files_by_mtime() -> None:
+	root_cookies = YTDLP_INITIAL_COOKIES_PATH
+	auth_cookies = YTDLP_COOKIES_PATH
+	if root_cookies.resolve() == auth_cookies.resolve():
+		return
+
+	root_valid = root_cookies.is_file() and root_cookies.stat().st_size > 0
+	auth_valid = auth_cookies.is_file() and auth_cookies.stat().st_size > 0
+	if not root_valid and not auth_valid:
+		logging.warning("[cookies] Neither cookie file contains data; skipping sync")
+		return
+
+	if root_valid and (
+		not auth_valid
+		or root_cookies.stat().st_mtime_ns > auth_cookies.stat().st_mtime_ns
+	):
+		_copy_cookie_file(root_cookies, auth_cookies, atomic=True)
+		logging.info("[cookies] Root cookies are newer; updated auth cookie file")
+	elif auth_valid and (
+		not root_valid
+		or auth_cookies.stat().st_mtime_ns > root_cookies.stat().st_mtime_ns
+	):
+		_copy_cookie_file(auth_cookies, root_cookies, atomic=False)
+		logging.info("[cookies] Auth cookies are newer; updated root cookie file")
+	else:
+		logging.info("[cookies] Cookie files have equal timestamps; no sync needed")
 
 
 async def probe_telegram_route(
@@ -161,6 +206,7 @@ async def post_init(app):
 
 
 def main():
+	sync_cookie_files_by_mtime()
 	init_db()
 	validate_translations()
 

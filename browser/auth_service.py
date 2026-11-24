@@ -336,6 +336,22 @@ def netscape_cookie_line(cookie: dict) -> str:
     return f"{domain}\t{include_subdomains}\t{path}\t{secure}\t{expires}\t{name}\t{value}"
 
 
+def sync_initial_cookies():
+    if not INITIAL_COOKIES_FILE.exists() or INITIAL_COOKIES_FILE.stat().st_size == 0:
+        return
+    if (
+        COOKIES_FILE.exists()
+        and INITIAL_COOKIES_FILE.stat().st_mtime_ns <= COOKIES_FILE.stat().st_mtime_ns
+    ):
+        return
+
+    AUTH_DIR.mkdir(parents=True, exist_ok=True)
+    tmp_file = COOKIES_FILE.with_name(f"{COOKIES_FILE.name}.initial.tmp")
+    shutil.copyfile(INITIAL_COOKIES_FILE, tmp_file)
+    os.chmod(tmp_file, 0o600)
+    os.replace(tmp_file, COOKIES_FILE)
+
+
 def clear_stale_profile_locks():
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     for lock_name in ("SingletonLock", "SingletonCookie", "SingletonSocket"):
@@ -412,17 +428,24 @@ async def export_cookies():
         if cookie.get("domain", "").endswith("youtube.com")
         or cookie.get("domain", "").endswith("google.com")
     ]
+    if not youtube_cookies:
+        raise ValueError("No YouTube or Google cookies found; existing files were kept")
 
     AUTH_DIR.mkdir(parents=True, exist_ok=True)
-    tmp_file = COOKIES_FILE.with_suffix(".txt.tmp")
     lines = [
         "# Netscape HTTP Cookie File",
         "# Exported by youtube-auth browser service",
     ]
     lines.extend(netscape_cookie_line(cookie) for cookie in youtube_cookies)
-    tmp_file.write_text("\n".join(lines) + "\n")
+    content = "\n".join(lines) + "\n"
+    tmp_file = COOKIES_FILE.with_suffix(".txt.tmp")
+    tmp_file.write_text(content)
     os.chmod(tmp_file, 0o600)
     os.replace(tmp_file, COOKIES_FILE)
+
+    if INITIAL_COOKIES_FILE.resolve() != COOKIES_FILE.resolve():
+        INITIAL_COOKIES_FILE.write_text(content)
+        os.chmod(INITIAL_COOKIES_FILE, 0o600)
     return len(youtube_cookies)
 
 
@@ -451,9 +474,7 @@ async def main():
     PROFILE_DIR.mkdir(parents=True, exist_ok=True)
     clear_stale_profile_locks()
 
-    if not COOKIES_FILE.exists() and INITIAL_COOKIES_FILE.exists():
-        shutil.copy2(INITIAL_COOKIES_FILE, COOKIES_FILE)
-        os.chmod(COOKIES_FILE, 0o600)
+    sync_initial_cookies()
 
     start_display()
     await asyncio.sleep(1)

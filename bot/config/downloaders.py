@@ -12,6 +12,9 @@ MAX_FILENAME_LENGTH = 150
 YTDLP_RETRIES = int(os.getenv("YTDLP_RETRIES", "3"))
 YTDLP_NO_PLAYLIST = True
 YTDLP_COOKIES_PATH = Path(os.getenv("YTDLP_COOKIES_PATH", "/cookies.txt"))
+YTDLP_INITIAL_COOKIES_PATH = Path(
+    os.getenv("YTDLP_INITIAL_COOKIES_PATH", "/cookies.txt")
+)
 
 # youtube errors
 YT_UNAVAILABLE_MAX_ERRORS = 2

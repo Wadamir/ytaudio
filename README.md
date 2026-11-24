@@ -202,8 +202,11 @@ docker compose -f docker-compose.dev.yml logs -f youtube-auth
 
 Open noVNC at `http://127.0.0.1:6080/vnc.html`, log in to YouTube, complete
 2FA/Captcha if requested, and then send `/auth_youtube` to the bot. Use the
-`Export cookies` button after authorization. The browser service atomically
-writes exported YouTube cookies to `storage/auth/cookies.txt`. Its proxy
+`Export cookies` button after authorization. The browser service writes
+exported cookies to `storage/auth/cookies.txt` and the root `cookies.txt`;
+the auth copy is updated atomically.
+If either copy is newer when the bot starts, the bot synchronizes the older
+copy. Its proxy
 connections use the configured `YT_PROXY_TYPE` preference and fall back to the
 other configured proxy type.
 

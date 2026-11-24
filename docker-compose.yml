@@ -9,6 +9,7 @@ services:
       - ./storage/audio:/storage/audio
       - ./storage/db:/storage/db
       - ./storage/auth:/storage/auth
+      - ./cookies.txt:/cookies.txt
     networks:
       - ytaudio_net
     environment:
@@ -33,7 +34,7 @@ services:
       - "127.0.0.1:6080:6080"
     volumes:
       - ./storage/auth:/storage/auth
-      - ./cookies.txt:/cookies.txt:ro
+      - ./cookies.txt:/cookies.txt
     networks:
       - ytaudio_net
     environment:
