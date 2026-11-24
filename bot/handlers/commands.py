@@ -12,6 +12,9 @@ from bot.i18n.helpers import tr, tr_user
 from bot.i18n.keyboards import language_keyboard, user_reply_keyboard, donate_keyboard
 
 from bot.utils.time import time_until_utc_reset
+from bot.config.app import ADMIN_USER_ID
+from bot.browser_auth import browser_auth_status
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
@@ -86,4 +89,51 @@ async def donate_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 	await update.message.reply_text(
 		tr_user(user.id, "donate_prompt"),
 		reply_markup=donate_keyboard(user.id)
+	)
+
+
+async def auth_youtube_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+	user = update.effective_user
+	if user.id != ADMIN_USER_ID:
+		return
+
+	try:
+		status = await browser_auth_status()
+	except Exception as exc:
+		await update.message.reply_text(
+			f"Browser auth service unavailable: {str(exc)[:200]}"
+		)
+		return
+
+	import os
+
+	novnc_url = os.getenv(
+		"YOUTUBE_AUTH_NOVNC_URL",
+		"http://localhost:6080/vnc.html",
+	)
+	keyboard_rows = [
+		[InlineKeyboardButton("Export cookies", callback_data="auth_export")],
+		[InlineKeyboardButton("Check status", callback_data="auth_status")],
+	]
+
+	if novnc_url.startswith(("https://", "tg://")):
+		keyboard_rows.insert(
+			0,
+			[InlineKeyboardButton("Open browser", url=novnc_url)],
+		)
+
+	keyboard = InlineKeyboardMarkup(keyboard_rows)
+
+	await update.message.reply_text(
+		(
+			"<b>YouTube browser authorization</b>\n"
+			f"Status: {status.get('status')}\n"
+			f"Cookies file: {'available' if status.get('cookies_file') else 'not available'}\n"
+			f"noVNC: {novnc_url}\n"
+			"Log in to YouTube in the browser, complete 2FA/Captcha, "
+			"then export cookies."
+		),
+		parse_mode="HTML",
+		reply_markup=keyboard,
+		disable_web_page_preview=True,
 	)

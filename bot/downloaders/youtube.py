@@ -16,7 +16,15 @@ from bot.transport.strategy import iter_routes
 from bot.transport.state import mark_403, mark_success
 
 from .base import BaseDownloader, DownloadContext
-from .errors import DownloaderError, VideoUnavailable, LiveStreamNotSupported, VideoTooLong, DownloadFailed, FetchInfoFailed
+from .errors import (
+	DownloaderError,
+	VideoUnavailable,
+	LiveStreamNotSupported,
+	VideoTooLong,
+	DownloadFailed,
+	FetchInfoFailed,
+	NoUnencryptedAudioFormat,
+)
 from .stages import DownloadStage
 from .utils import notify
 
@@ -109,18 +117,18 @@ class YouTubeDownloader(BaseDownloader):
 
 			# 3. Check cookies.txt file layout and existence inside the container environment
 			try:
-				cookie_file = Path("/cookies.txt")
+				cookie_file = YTDLP_COOKIES_PATH
 				if not cookie_file.exists():
-					logger.error("[diag-3/4] Critical: cookies.txt file is MISSING at /cookies.txt")
+					logger.error("[diag-3/4] Active cookies file is missing at %s", cookie_file)
 				elif cookie_file.stat().st_size == 0:
-					logger.error("[diag-3/4] Critical: cookies.txt is EMPTY (zero bytes size)")
+					logger.error("[diag-3/4] Active cookies file is empty")
 				else:
 					with open(cookie_file, "r") as f:
 						first_line = f.readline().strip()
 					if "netscape" in first_line.lower() or "cookie" in first_line.lower():
 						logger.info("[diag-3/4] cookies.txt layout verified successfully (Netscape format detected)")
 					else:
-						logger.warning("[diag-3/4] Warning: cookies.txt lacks correct header. First line: %s", first_line)
+						logger.warning("[diag-3/4] Active cookies file lacks a Netscape header")
 			except Exception as e:
 				logger.error("[diag-3/4] Failed to read or parse cookies.txt file mapping layout: %s", e)
 
@@ -154,12 +162,21 @@ class YouTubeDownloader(BaseDownloader):
 					opts.pop("proxy", None)
 
 				info = yt_dlp.YoutubeDL(opts).extract_info(url, download=False)
+				ctx.transport_route = route.key
+				ctx.transport_proxy = route.proxy
 				mark_success(route.key)
 				return info
 
 			except yt_dlp.utils.DownloadError as e:
 				msg = str(e).lower()
-				if any(x in msg for x in ("403", "429", "forbidden", "too many requests")): # youtube_403/429
+				if any(x in msg for x in (
+					"403",
+					"429",
+					"forbidden",
+					"too many requests",
+					"confirm you're not a bot",
+					"sign in to confirm",
+				)):
 					mark_403(route.key)
 					continue
 				raise
@@ -192,9 +209,7 @@ class YouTubeDownloader(BaseDownloader):
 			ctx.ua_profile = ua_profile
 
 		opts = {
-			# Force the global Lithuanian proxy string into core configuration options
-			"proxy": os.getenv("EXTERNAL_PROXY_URL"),
-			"cookies": str(YTDLP_COOKIES_PATH),
+			"cookiefile": str(YTDLP_COOKIES_PATH),
 			"quiet": True,
 			"socket_timeout": 30,
 			"retries": YTDLP_RETRIES,
@@ -206,7 +221,7 @@ class YouTubeDownloader(BaseDownloader):
 					"path": YTDLP_JS_RUNTIME_PATH
 				}
 			},
-			# "remote_components": ["ejs:github"],
+			"remote_components": ["ejs:github"],
 			"concurrent_fragment_downloads": 1,
 			"sleep_interval": 1,
 			"max_sleep_interval": 5,
@@ -217,9 +232,19 @@ class YouTubeDownloader(BaseDownloader):
 			"extractor_args": {
 				"youtube": {
 					"player_client": ["web", "android"],
+				},
+				"youtubepot-bgutilhttp": {
+					"base_url": ["http://bgutil-provider:4416"],
 				}
 			},
 		}		
+
+		if ctx and ctx.transport_route == "direct":
+			opts.pop("proxy", None)
+		elif ctx and ctx.transport_proxy:
+			opts["proxy"] = ctx.transport_proxy
+		else:
+			opts["proxy"] = os.getenv("EXTERNAL_PROXY_URL")
 
 		return opts
 
@@ -273,6 +298,10 @@ class YouTubeDownloader(BaseDownloader):
 					lambda: yt_dlp.YoutubeDL(opts).extract_info(url, download=True)
 				)
 			except Exception as e:
+				if "drm protected" in str(e).lower():
+					raise NoUnencryptedAudioFormat(
+						"No unencrypted audio format is available"
+					) from e
 				last_exc = e
 				logger.warning(
 					f"[downloader] yt-dlp attempt {attempt}/{YTDLP_RETRIES} failed: {e}"
@@ -381,6 +410,8 @@ class YouTubeDownloader(BaseDownloader):
 			
 			ctx.downloaded_files = files
 
+		except NoUnencryptedAudioFormat:
+			raise
 		except Exception as e:
 			raise DownloadFailed(f"Download failed after retries: {e}") from e
 		

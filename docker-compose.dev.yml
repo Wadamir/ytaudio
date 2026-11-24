@@ -7,7 +7,34 @@ services:
     volumes:
       - ./bot:/app/bot
       - ./storage/db:/app/storage/db
+      - ./cookies.txt:/cookies.txt:ro
+      - ./storage/auth:/storage/auth
     environment:
       - PYTHONPATH=/app
-      - RESET_DB_ON_START=true
+      - RESET_DB_ON_START=false
       - YT_ROUTING_MODE=${YT_ROUTING_MODE:-direct_proxy}
+      - YTDLP_COOKIES_PATH=/storage/auth/cookies.txt
+      - YOUTUBE_AUTH_URL=http://youtube-auth:8081
+      - YOUTUBE_AUTH_NOVNC_URL=${YOUTUBE_AUTH_NOVNC_URL:-http://localhost:6080/vnc.html}
+    depends_on:
+      - youtube-auth
+      - bgutil-provider
+
+  youtube-auth:
+    build:
+      context: ./browser
+    container_name: tg-ytaudio-browser-auth-dev
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ./storage/auth:/storage/auth
+      - ./cookies.txt:/cookies.txt:ro
+    environment:
+      - INITIAL_COOKIES_FILE=/cookies.txt
+      - YOUTUBE_AUTH_API_PORT=8081
+
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
+    restart: unless-stopped

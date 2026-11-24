@@ -7,6 +7,9 @@ from bot.db.db import set_user_language
 from bot.i18n.helpers import tr, tr_user
 from bot.i18n.service import is_supported_lang
 from bot.keyboards.main import get_main_keyboard
+from bot.browser_auth import browser_auth_status, export_browser_cookies
+from bot.config.app import ADMIN_USER_ID
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 logger = logging.getLogger(__name__)
 
@@ -62,3 +65,51 @@ async def donate_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 		currency="XTR",
 		prices=prices_map[option],
 	)
+
+
+async def auth_browser_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+	query = update.callback_query
+	await query.answer()
+
+	if query.from_user.id != ADMIN_USER_ID:
+		return
+
+	if query.data == "auth_status":
+		try:
+			status = await browser_auth_status()
+			await query.edit_message_text(
+				(
+					"<b>YouTube browser authorization</b>\n"
+					f"Status: {status.get('status')}\n"
+					f"Page URL: {status.get('page_url') or 'unknown'}\n"
+					f"Cookies file: {'available' if status.get('cookies_file') else 'not available'}"
+				),
+				parse_mode="HTML",
+			)
+		except Exception as exc:
+			await query.edit_message_text(
+				f"Browser auth status check failed: {str(exc)[:200]}"
+			)
+		return
+
+	if query.data == "auth_export":
+		try:
+			result = await export_browser_cookies()
+			if result.get("ok"):
+				text = (
+					"<b>YouTube cookies exported</b>\n"
+					f"Exported cookies: {result.get('cookie_count', 0)}"
+				)
+			else:
+				text = (
+					"<b>Cookie export failed</b>\n"
+					f"{result.get('error', 'unknown')}"
+				)
+			await query.edit_message_text(
+				text,
+				parse_mode="HTML",
+			)
+		except Exception as exc:
+			await query.edit_message_text(
+				f"Cookie export failed: {str(exc)[:200]}"
+			)

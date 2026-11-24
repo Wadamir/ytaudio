@@ -26,6 +26,7 @@ TEXTS = {
     "long_video": "❌ Sorry, the video duration exceeds the allowed maximum length. Please try a shorter video.",
     "info_unavailable": "❌ Sorry, failed to read video information.",    
 	"failed_download": "❌ Failed to download audio. Please try again later....",
+	"no_unencrypted_audio": "❌ No unencrypted audio format is available for this video.",
 
     "failed_processing": "❌ Failed to process audio. Please try again later.",
     "no_duration": "❌ Unable to determine video duration. Please try again later.",

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Dict
 
 from telegram import Bot  # type: ignore
-from telegram.error import TelegramError  # type: ignore
+from telegram.error import BadRequest, TelegramError  # type: ignore
 
 from bot.db.db import (
 	increment_downloads,
@@ -29,6 +29,7 @@ from bot.downloaders.errors import (
 	VideoTooLong,
 	DownloadFailed,
 	FetchInfoFailed,
+	NoUnencryptedAudioFormat,
 )
 
 from bot.pipeline.delivery import deliver
@@ -43,6 +44,7 @@ from bot.pipeline.errors import (
 )
 
 from bot.utils.inflight import get_inflight_messages, pop_inflight_messages, clear_inflight
+from bot.browser_auth import notify_admin_auth_required
 
 from bot.config.downloaders import MAX_DURATION_SECONDS
 
@@ -56,7 +58,8 @@ YOUTUBE_ERRORS = {
 	"live_stream", 
 	"long_video",
 	"info_unavailable", 
-	"failed_download"
+	"failed_download",
+	"no_unencrypted_audio",
 }
 
 
@@ -105,29 +108,42 @@ async def process_job(job: Dict, bot: Bot):
 
 
 	# progress handler
-	async def handle_progress(stage: DownloadStage, data: dict):
-		try:
-			if stage == DownloadStage.INFO_READY:
-				await bot.edit_message_text(
-					chat_id=chat_id,
-					message_id=message_id,
-					text=tr_user(
-						user_id,
-						"info_ready",
-						duration=format_duration(data.get("duration_seconds")),
-					),
-				)
+	progress_text: str | None = None
+	progress_lock = asyncio.Lock()
 
-			elif stage == DownloadStage.STARTING_DOWNLOAD or stage == DownloadStage.DOWNLOADING:
+	async def handle_progress(stage: DownloadStage, data: dict):
+		nonlocal progress_text
+
+		text: str | None = None
+		if stage == DownloadStage.INFO_READY:
+			text = tr_user(
+				user_id,
+				"info_ready",
+				duration=format_duration(data.get("duration_seconds")),
+			)
+		elif stage == DownloadStage.STARTING_DOWNLOAD or stage == DownloadStage.DOWNLOADING:
+			text = tr_user(
+				user_id,
+				"fast_mode" if data.get("processing_mode") == "fast_mode" else "slow_mode",
+				duration=format_duration(data.get("duration_seconds")),
+			)
+
+		if text is None:
+			return
+
+		try:
+			async with progress_lock:
+				if text == progress_text:
+					return
 				await bot.edit_message_text(
 					chat_id=chat_id,
 					message_id=message_id,
-					text=tr_user(
-						user_id,
-						"fast_mode" if data.get("processing_mode") == "fast_mode" else "slow_mode",
-						duration=format_duration(data.get("duration_seconds")),
-					),
+					text=text,
 				)
+				progress_text = text
+		except BadRequest as e:
+			if "message is not modified" not in str(e).lower():
+				logger.warning("[worker] progress notify failed: %s", e)
 		except TelegramError as e:
 			# ⚠️ ignore errors here to not break the download flow
 			logger.warning("[worker] progress notify failed: %s", e)
@@ -155,6 +171,7 @@ async def process_job(job: Dict, bot: Bot):
 				message_id=message_id,
 				text=tr_user(user_id, "reading_info"),
 			)
+			progress_text = tr_user(user_id, "reading_info")
 		except TelegramError as e:
 			logger.warning(f"[worker] notify failed: {e}")
 
@@ -237,6 +254,10 @@ async def process_job(job: Dict, bot: Bot):
 			ctx.status = "failed"
 			ctx.fallback_reason = "info_unavailable"
 			ctx.error_message = str(e)
+			try:
+				await notify_admin_auth_required(bot)
+			except Exception as alert_exc:
+				logger.warning("[worker] failed to notify admin about browser auth: %s", alert_exc)
 
 			# log_youtube_error(
 			# 	error_type="fetch_info",
@@ -251,6 +272,11 @@ async def process_job(job: Dict, bot: Bot):
 			# 	message_id=message_id,
 			# 	text=tr_user(user_id, "failed_reading_info"),
 			# )
+
+		except NoUnencryptedAudioFormat as e:
+			ctx.status = "failed"
+			ctx.fallback_reason = "no_unencrypted_audio"
+			ctx.error_message = str(e)
 
 		except DownloadFailed as e:
 			ctx.status = "failed"

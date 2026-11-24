@@ -191,6 +191,30 @@ docker compose -f docker-compose.dev.yml up --build
 docker compose up -d --build
 ```
 
+### YouTube browser authorization
+
+When YouTube requires manual authorization, start or check the browser service:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d youtube-auth
+docker compose -f docker-compose.dev.yml logs -f youtube-auth
+```
+
+Open noVNC at `http://127.0.0.1:6080/vnc.html`, log in to YouTube, complete
+2FA/Captcha if requested, and then send `/auth_youtube` to the bot. Use the
+`Export cookies` button after authorization. The browser service atomically
+writes exported YouTube cookies to `storage/auth/cookies.txt`.
+
+### YouTube PO Token provider
+
+Both Compose configurations run the `bgutil-ytdlp-pot-provider` service on the
+internal Docker network and install its yt-dlp plugin in the bot image. The
+provider has no published host port. PO Tokens may help with requests that
+require attestation, but they do not guarantee that YouTube will accept a
+request or remove IP-based bot checks. To troubleshoot, check verbose yt-dlp
+output for the loaded `bgutil` provider and a `Generating a ... PO Token` line;
+the provider may not be invoked if extraction fails earlier.
+
 ---
 
 ## 🤝 Contributing

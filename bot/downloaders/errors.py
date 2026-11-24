@@ -36,3 +36,8 @@ class VideoTooLong(DownloaderError):
 class DownloadFailed(DownloaderError):
 	"""Download failed after retries (network, yt-dlp, ffmpeg)."""
 	pass
+
+
+class NoUnencryptedAudioFormat(DownloaderError):
+	"""No downloadable, unencrypted audio format is available."""
+	pass

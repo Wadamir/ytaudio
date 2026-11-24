@@ -5,7 +5,7 @@ SHELL := /bin/bash
 BOT_CONTAINER_NAME := tg-ytaudio-bot
 DB_FILE_PATH := storage/db/bot.sqlite3
 
-.PHONY: help up down restart status logs clean db-reset virtues full-reset
+.PHONY: help up down restart status logs clean db-reset virtues full-reset auth auth-logs
 
 # Display available automation commands by default
 help:
@@ -17,6 +17,8 @@ help:
 	@echo "  make logs       - Follow latest container runtime output streams"
 	@echo "  make db-reset   - Safely clear internal database and force clean rebuild with no-cache flag"
 	@echo "  make full-reset - Pull latest changes via git, reset database, and rebuild entire stack with no-cache"
+	@echo "  make auth      - Start YouTube manual authorization browser service"
+	@echo "  make auth-logs  - Follow YouTube authorization browser logs"
 
 # Build image and launch container infrastructure
 up:
@@ -36,6 +38,13 @@ status:
 # Follow container console log output streams live
 logs:
 	docker compose logs -f bot --tail 50
+
+# Start and inspect the browser used for manual YouTube authorization
+auth:
+	docker compose -f docker-compose.dev.yml up -d --build youtube-auth
+
+auth-logs:
+	docker compose -f docker-compose.dev.yml logs -f youtube-auth
 
 # Remove internal database state structures and perform a forced clean image rebuild without cache
 db-reset:

@@ -8,6 +8,7 @@ services:
     volumes:
       - ./storage/audio:/storage/audio
       - ./storage/db:/storage/db
+      - ./storage/auth:/storage/auth
     networks:
       - ytaudio_net
     environment:
@@ -17,6 +18,36 @@ services:
       - YTDLP_PROXY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_PRIMARY=${EXTERNAL_PROXY_URL}
       - YT_PROXY_SECONDARY=${EXTERNAL_PROXY_URL}
+      - YTDLP_COOKIES_PATH=/storage/auth/cookies.txt
+      - YOUTUBE_AUTH_URL=http://youtube-auth:8081
+      - YOUTUBE_AUTH_NOVNC_URL=${YOUTUBE_AUTH_NOVNC_URL:-http://localhost:6080/vnc.html}
+    depends_on:
+      - youtube-auth
+      - bgutil-provider
+
+  youtube-auth:
+    build:
+      context: ./browser
+    container_name: tg-ytaudio-browser-auth
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:6080:6080"
+    volumes:
+      - ./storage/auth:/storage/auth
+      - ./cookies.txt:/cookies.txt:ro
+    networks:
+      - ytaudio_net
+    environment:
+      - INITIAL_COOKIES_FILE=/cookies.txt
+      - YOUTUBE_AUTH_API_PORT=8081
+
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:2.0.2
+    restart: unless-stopped
+    networks:
+      - ytaudio_net
 
 networks:
   ytaudio_net:

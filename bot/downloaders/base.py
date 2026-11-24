@@ -40,6 +40,8 @@ class DownloadContext:
 	fallback_reason: Optional[str] = None
 	error_message: Optional[str] = None
 	ua_profile: Optional[str] = None
+	transport_route: Optional[str] = None
+	transport_proxy: Optional[str] = None
 	
     #stages
 	on_progress: Optional[ProgressCallback] = None
